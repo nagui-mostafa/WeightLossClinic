@@ -1,0 +1,179 @@
+// Prisma schema for Weight Loss Clinic Management System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PATIENT
+}
+
+enum MedicationType {
+  INJECTABLE
+  ORAL
+  TOPICAL
+  OTHER
+}
+
+enum AuditAction {
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  USER_ROLE_CHANGED
+  USER_ACTIVATED
+  USER_DEACTIVATED
+  RECORD_CREATED
+  RECORD_UPDATED
+  RECORD_DELETED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  EMAIL_VERIFIED
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGOUT
+  REFRESH_TOKEN_ROTATED
+  REFRESH_TOKEN_REVOKED
+}
+
+model User {
+  id                String    @id @default(uuid()) @db.Uuid
+  email             String    @unique
+  passwordHash      String
+  role              Role      @default(PATIENT)
+
+  firstName         String
+  lastName          String
+  phone             String?   @unique
+
+  // Weight loss specific fields
+  weightLoss        Decimal?  @db.Decimal(5, 2)
+  weightDose        Decimal?  @db.Decimal(6, 2)
+  currentWeight     Decimal?  @db.Decimal(5, 2)
+  goalWeight        Decimal?  @db.Decimal(5, 2)
+
+  isEmailVerified   Boolean   @default(false)
+  isActive          Boolean   @default(true)
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  records                   Record[]
+  refreshSessions           RefreshSession[]
+  passwordResetTokens       PasswordResetToken[]
+  emailVerificationTokens   EmailVerificationToken[]
+  auditLogsAsActor          AuditLog[]              @relation("AuditLogActor")
+  auditLogsAsTarget         AuditLog[]              @relation("AuditLogTarget")
+
+  @@index([role])
+  @@index([isActive])
+  @@index([email])
+  @@map("users")
+}
+
+model Record {
+  id              String          @id @default(uuid()) @db.Uuid
+  userId          String          @db.Uuid
+
+  startDate       DateTime
+  endDate         DateTime?
+  medicationName  String
+  medicationType  MedicationType
+  notes           String?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startDate])
+  @@index([medicationType])
+  @@map("records")
+}
+
+model RefreshSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenHash   String    @unique
+
+  userAgent   String?
+  ip          String?
+
+  expiresAt   DateTime
+  revokedAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId])
+  @@map("refresh_sessions")
+}
+
+model PasswordResetToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenHash   String    @unique
+
+  expiresAt   DateTime
+  usedAt      DateTime?
+
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenHash   String    @unique
+
+  expiresAt   DateTime
+  usedAt      DateTime?
+
+  createdAt   DateTime  @default(now())
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+model AuditLog {
+  id            String       @id @default(uuid()) @db.Uuid
+  actorUserId   String?      @db.Uuid
+  targetUserId  String?      @db.Uuid
+
+  action        AuditAction
+  entityType    String
+  entityId      String?
+  metadata      Json?
+
+  ip            String?
+  userAgent     String?
+
+  createdAt     DateTime     @default(now())
+
+  // Relations
+  actor         User?        @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  target        User?        @relation("AuditLogTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([actorUserId])
+  @@map("audit_logs")
+}

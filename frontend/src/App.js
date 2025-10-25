@@ -1,0 +1,23 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
+import RequireAuth from './components/layout/RequireAuth';
+import RequireAdmin from './components/layout/RequireAdmin';
+import DashboardLayout from './components/layout/DashboardLayout';
+import LoginPage from './pages/auth/LoginPage';
+import SignupPage from './pages/auth/SignupPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import OverviewPage from './pages/dashboard/OverviewPage';
+import ProfilePage from './pages/dashboard/ProfilePage';
+import RecordsPage from './pages/dashboard/records/RecordsPage';
+import EditRecordPage from './pages/dashboard/records/EditRecordPage';
+import UsersPage from './pages/admin/UsersPage';
+import AuditLogsPage from './pages/admin/AuditLogsPage';
+import AdminStatsPage from './pages/admin/AdminStatsPage';
+import VerifyEmailPage from './pages/auth/VerifyEmailPage';
+const App = () => {
+    return (_jsx(NotificationProvider, { children: _jsx(AuthProvider, { children: _jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(Navigate, { to: "/app", replace: true }) }), _jsxs(Route, { path: "auth", children: [_jsx(Route, { path: "login", element: _jsx(LoginPage, {}) }), _jsx(Route, { path: "signup", element: _jsx(SignupPage, {}) }), _jsx(Route, { path: "forgot-password", element: _jsx(ForgotPasswordPage, {}) }), _jsx(Route, { path: "reset-password", element: _jsx(ResetPasswordPage, {}) }), _jsx(Route, { path: "verify-email", element: _jsx(VerifyEmailPage, {}) })] }), _jsx(Route, { element: _jsx(RequireAuth, {}), children: _jsxs(Route, { element: _jsx(DashboardLayout, {}), children: [_jsxs(Route, { path: "app", children: [_jsx(Route, { index: true, element: _jsx(OverviewPage, {}) }), _jsx(Route, { path: "profile", element: _jsx(ProfilePage, {}) }), _jsx(Route, { path: "records", element: _jsx(RecordsPage, {}) }), _jsx(Route, { path: "records/:id", element: _jsx(EditRecordPage, {}) })] }), _jsxs(Route, { element: _jsx(RequireAdmin, {}), children: [_jsx(Route, { path: "app/users", element: _jsx(UsersPage, {}) }), _jsx(Route, { path: "app/audit", element: _jsx(AuditLogsPage, {}) }), _jsx(Route, { path: "app/admin/stats", element: _jsx(AdminStatsPage, {}) })] })] }) }), _jsx(Route, { path: "*", element: _jsx(Navigate, { to: "/app", replace: true }) })] }) }) }));
+};
+export default App;
