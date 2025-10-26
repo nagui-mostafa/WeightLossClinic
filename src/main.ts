@@ -38,6 +38,7 @@ async function bootstrap() {
             "'unsafe-eval'",
             ...swaggerCdnOrigins,
           ],
+          'upgrade-insecure-requests': null,
         },
       },
       crossOriginEmbedderPolicy: false,
