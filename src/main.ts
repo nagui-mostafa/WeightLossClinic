@@ -10,14 +10,39 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });
+  const swaggerCdnOrigins = [
+    'https://cdnjs.cloudflare.com',
+    'https://cdn.jsdelivr.net',
+    'https://fonts.googleapis.com',
+    'https://fonts.gstatic.com',
+  ];
+
 
   // Use Pino logger
   app.useLogger(app.get(Logger));
 
   const configService = app.get(ConfigService);
 
-  // Security
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          connectSrc: ["'self'", ...swaggerCdnOrigins],
+          imgSrc: ["'self'", 'data:', ...swaggerCdnOrigins],
+          styleSrc: ["'self'", "'unsafe-inline'", ...swaggerCdnOrigins],
+          fontSrc: ["'self'", 'data:', ...swaggerCdnOrigins],
+          scriptSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            "'unsafe-eval'",
+            ...swaggerCdnOrigins,
+          ],
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   // CORS
   const corsOrigins = configService.get<string>('CORS_ORIGINS')?.split(',') || [
