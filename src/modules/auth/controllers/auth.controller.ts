@@ -47,6 +47,7 @@ export class AuthController {
   @Public()
   @ApiOperation({ summary: 'Login and receive JWT tokens' })
   @ApiOkResponse({ type: AuthResponseDto })
+  @HttpCode(HttpStatus.OK)
   async login(
     @Body() dto: LoginDto,
     @Req() request: Request,
