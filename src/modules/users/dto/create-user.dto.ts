@@ -6,7 +6,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -29,13 +28,10 @@ export class CreateUserDto {
 
   @ApiPropertyOptional({
     example: '+14155552671',
-    description: 'E.164 formatted phone number',
+    description: 'Phone number (format not enforced)',
   })
   @IsOptional()
   @IsString()
-  @Matches(/^\+?[1-9]\d{1,14}$/, {
-    message: 'phone must be a valid E.164 number',
-  })
   phone?: string;
 
   @ApiProperty({

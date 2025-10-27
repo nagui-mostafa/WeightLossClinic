@@ -9,7 +9,6 @@ import {
   IsOptional,
   IsPositive,
   IsString,
-  Matches,
   Max,
   MaxLength,
   Min,
@@ -33,13 +32,10 @@ export class UpdateUserProfileDto {
 
   @ApiPropertyOptional({
     example: '+14155552671',
-    description: 'E.164 formatted phone number',
+    description: 'Phone number (format not enforced)',
   })
   @IsOptional()
   @IsString()
-  @Matches(/^\+?[1-9]\d{1,14}$/, {
-    message: 'phone must be a valid E.164 number',
-  })
   phone?: string;
 
   @ApiPropertyOptional({ example: 'https://cdn.example.com/avatar.png' })
