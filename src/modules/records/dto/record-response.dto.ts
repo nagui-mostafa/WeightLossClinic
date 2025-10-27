@@ -15,10 +15,16 @@ export class RecordResponseDto {
   endDate?: string | null;
 
   @ApiProperty()
-  medicationName!: string;
+  medication!: string;
 
-  @ApiProperty({ enum: MedicationType })
-  medicationType!: MedicationType;
+  @ApiPropertyOptional({ enum: MedicationType })
+  medicationType?: MedicationType | null;
+
+  @ApiProperty()
+  purchasedAt!: string;
+
+  @ApiPropertyOptional()
+  renewalDate?: string | null;
 
   @ApiPropertyOptional()
   notes?: string | null;

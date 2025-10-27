@@ -11,6 +11,7 @@ export * from './services/password.service';
 export * from './enums/role.enum';
 export * from './enums/audit-action.enum';
 export * from './enums/medication-type.enum';
+export * from './enums/activity-kind.enum';
 
 // Decorators
 export * from './decorators/roles.decorator';

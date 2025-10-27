@@ -11,6 +11,17 @@ import {
 export class UpdateRecordDto {
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  medication?: string;
+
+  @ApiPropertyOptional({ enum: MedicationType })
+  @IsOptional()
+  @IsEnum(MedicationType)
+  medicationType?: MedicationType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsDateString()
   startDate?: string;
 
@@ -21,14 +32,13 @@ export class UpdateRecordDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  medicationName?: string;
+  @IsDateString()
+  purchasedAt?: string;
 
-  @ApiPropertyOptional({ enum: MedicationType })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsEnum(MedicationType)
-  medicationType?: MedicationType;
+  @IsDateString()
+  renewalDate?: string;
 
   @ApiPropertyOptional({ maxLength: 1000 })
   @IsOptional()

@@ -7,8 +7,5 @@ export class SignupDto extends PickType(CreateUserDto, [
   'email',
   'phone',
   'password',
-  'weightLoss',
-  'weightDose',
-  'currentWeight',
-  'goalWeight',
+  'avatarUrl',
 ] as const) {}

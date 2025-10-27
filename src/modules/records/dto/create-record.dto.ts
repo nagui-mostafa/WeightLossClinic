@@ -18,6 +18,17 @@ export class CreateRecordDto {
   userId?: string;
 
   @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  medication!: string;
+
+  @ApiPropertyOptional({ enum: MedicationType })
+  @IsOptional()
+  @IsEnum(MedicationType)
+  medicationType?: MedicationType;
+
+  @ApiProperty()
   @IsDateString()
   startDate!: string;
 
@@ -27,14 +38,13 @@ export class CreateRecordDto {
   endDate?: string;
 
   @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
-  medicationName!: string;
+  @IsDateString()
+  purchasedAt!: string;
 
-  @ApiProperty({ enum: MedicationType })
-  @IsEnum(MedicationType)
-  medicationType!: MedicationType;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  renewalDate?: string;
 
   @ApiPropertyOptional({ maxLength: 1000 })
   @IsOptional()

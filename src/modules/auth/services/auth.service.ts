@@ -117,7 +117,7 @@ export class AuthService {
     }
 
     const tokens = await this.generateAndPersistTokens(user, context);
-    const userDto = this.usersService.toResponseDto(user);
+    const userDto = await this.usersService.getUserWithRecords(user.id);
 
     await this.auditLogService.log(AuditAction.LOGIN_SUCCESS, {
       actorUserId: user.id,
@@ -184,6 +184,7 @@ export class AuthService {
       userId,
     )) as PrismaUser;
     const tokens = await this.generateAndPersistTokens(user, context);
+    const userProfile = await this.usersService.getUserWithRecords(userId);
 
     await this.auditLogService.log(AuditAction.REFRESH_TOKEN_ROTATED, {
       actorUserId: userId,
@@ -197,7 +198,7 @@ export class AuthService {
 
     return {
       tokens: this.toAuthTokensDto(tokens),
-      user: this.usersService.toResponseDto(user),
+      user: userProfile,
     };
   }
 
@@ -283,7 +284,7 @@ export class AuthService {
 
   async getMe(userId: string) {
     const user = await this.usersService.findByIdOrThrow(userId);
-    return this.usersService.toResponseDto(user);
+    return this.usersService.getUserWithRecords(user.id);
   }
 
   private async generateAndPersistTokens(

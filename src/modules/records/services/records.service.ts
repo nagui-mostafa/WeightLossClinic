@@ -96,8 +96,10 @@ export class RecordsService {
         userId,
         startDate: new Date(dto.startDate),
         endDate: dto.endDate ? new Date(dto.endDate) : null,
-        medicationName: dto.medicationName,
-        medicationType: dto.medicationType,
+        medication: dto.medication,
+        medicationType: dto.medicationType ?? null,
+        purchasedAt: new Date(dto.purchasedAt),
+        renewalDate: dto.renewalDate ? new Date(dto.renewalDate) : null,
         notes: dto.notes ?? null,
       },
     })) as RecordEntity;
@@ -107,7 +109,7 @@ export class RecordsService {
       targetUserId: userId,
       entityType: 'Record',
       entityId: record.id,
-      metadata: { medicationName: record.medicationName },
+      metadata: { medication: record.medication },
       ip: context.ip ?? null,
       userAgent: context.userAgent ?? null,
     });
@@ -158,8 +160,18 @@ export class RecordsService {
               ? new Date(dto.endDate)
               : null
             : record.endDate,
-        medicationName: dto.medicationName ?? record.medicationName,
+        medication: dto.medication ?? record.medication,
         medicationType: dto.medicationType ?? record.medicationType,
+        purchasedAt:
+          dto.purchasedAt !== undefined
+            ? new Date(dto.purchasedAt)
+            : record.purchasedAt,
+        renewalDate:
+          dto.renewalDate !== undefined
+            ? dto.renewalDate
+              ? new Date(dto.renewalDate)
+              : null
+            : record.renewalDate,
         notes: dto.notes ?? record.notes,
       },
     })) as RecordEntity;
@@ -198,7 +210,7 @@ export class RecordsService {
       targetUserId: record.userId,
       entityType: 'Record',
       entityId: record.id,
-      metadata: { medicationName: record.medicationName },
+      metadata: { medication: record.medication },
       ip: context.ip ?? null,
       userAgent: context.userAgent ?? null,
     });
@@ -210,8 +222,12 @@ export class RecordsService {
       userId: record.userId,
       startDate: record.startDate.toISOString(),
       endDate: record.endDate ? record.endDate.toISOString() : null,
-      medicationName: record.medicationName,
+      medication: record.medication,
       medicationType: record.medicationType,
+      purchasedAt: record.purchasedAt.toISOString(),
+      renewalDate: record.renewalDate
+        ? record.renewalDate.toISOString()
+        : null,
       notes: record.notes,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),

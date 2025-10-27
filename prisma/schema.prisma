@@ -1,4 +1,4 @@
-// Prisma schema for Weight Loss Clinic Management System
+// Prisma schema defining the Weight Loss Clinic data model
 
 generator client {
   provider = "prisma-client-js"
@@ -12,13 +12,6 @@ datasource db {
 enum Role {
   ADMIN
   PATIENT
-}
-
-enum MedicationType {
-  INJECTABLE
-  ORAL
-  TOPICAL
-  OTHER
 }
 
 enum AuditAction {
@@ -41,139 +34,200 @@ enum AuditAction {
   REFRESH_TOKEN_REVOKED
 }
 
+enum MedicationType {
+  INJECTABLE
+  ORAL
+  TOPICAL
+  OTHER
+}
+
+enum ActivityKind {
+  INJECTION
+  WEIGHT
+  WORKOUT
+  MESSAGE
+  RECORD
+  SHOT
+  NOTE
+}
+
 model User {
-  id                String    @id @default(uuid()) @db.Uuid
-  email             String    @unique
-  passwordHash      String
-  role              Role      @default(PATIENT)
+  id                     String                     @id @default(uuid()) @db.Uuid
+  email                  String                     @unique
+  passwordHash           String
+  role                   Role                       @default(PATIENT)
+  firstName              String                     @db.VarChar(100)
+  lastName               String                     @db.VarChar(100)
+  phone                  String?                    @unique
+  avatarUrl              String?                    @db.VarChar(255)
+  isEmailVerified        Boolean                    @default(false)
+  isActive               Boolean                    @default(true)
+  createdAt              DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime                   @default(now()) @updatedAt @db.Timestamptz(6)
+  shipping               UserShipping?
+  snapshot               UserSnapshot?
+  activities             UserActivity[]
+  records                Record[]
+  shots                  UserShot[]
+  refreshSessions        RefreshSession[]
+  passwordResetTokens    PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  auditLogsAsActor       AuditLog[]                 @relation("AuditLogActor")
+  auditLogsAsTarget      AuditLog[]                 @relation("AuditLogTarget")
 
-  firstName         String
-  lastName          String
-  phone             String?   @unique
-
-  // Weight loss specific fields
-  weightLoss        Decimal?  @db.Decimal(5, 2)
-  weightDose        Decimal?  @db.Decimal(6, 2)
-  currentWeight     Decimal?  @db.Decimal(5, 2)
-  goalWeight        Decimal?  @db.Decimal(5, 2)
-
-  isEmailVerified   Boolean   @default(false)
-  isActive          Boolean   @default(true)
-
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  // Relations
-  records                   Record[]
-  refreshSessions           RefreshSession[]
-  passwordResetTokens       PasswordResetToken[]
-  emailVerificationTokens   EmailVerificationToken[]
-  auditLogsAsActor          AuditLog[]              @relation("AuditLogActor")
-  auditLogsAsTarget         AuditLog[]              @relation("AuditLogTarget")
-
-  @@index([role])
-  @@index([isActive])
-  @@index([email])
   @@map("users")
+  @@index([role], map: "users_role_idx")
+  @@index([isActive], map: "users_is_active_idx")
+}
+
+model UserShipping {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @unique @db.Uuid
+  fullName   String   @db.VarChar(150)
+  address1   String   @db.VarChar(200)
+  address2   String?  @db.VarChar(200)
+  city       String   @db.VarChar(120)
+  state      String   @db.VarChar(120)
+  postalCode String   @db.VarChar(20)
+  country    String   @db.VarChar(120)
+  phone      String?  @db.VarChar(30)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_shipping")
+}
+
+model UserSnapshot {
+  id                       String   @id @default(uuid()) @db.Uuid
+  userId                   String   @unique @db.Uuid
+  currentWeightLbs         Decimal? @db.Decimal(6, 2)
+  goalWeightLbs            Decimal? @db.Decimal(6, 2)
+  medicationType           String?  @db.VarChar(150)
+  doseName                 String?  @db.VarChar(150)
+  doseValue                Decimal? @db.Decimal(6, 2)
+  doseUnit                 String?  @db.VarChar(50)
+  nextAppointmentId        String?  @db.VarChar(100)
+  nextAppointmentStartsAt  DateTime? @db.Timestamptz(6)
+  createdAt                DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_snapshots")
+}
+
+model UserActivity {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @db.Uuid
+  kind       ActivityKind
+  title      String       @db.VarChar(200)
+  subtitle   String?      @db.VarChar(250)
+  occurredAt DateTime     @db.Timestamptz(6)
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime     @default(now()) @updatedAt @db.Timestamptz(6)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_activities")
+  @@index([userId, occurredAt], map: "user_activity_user_occurred_idx")
 }
 
 model Record {
-  id              String          @id @default(uuid()) @db.Uuid
-  userId          String          @db.Uuid
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  medication     String          @db.VarChar(200)
+  medicationType MedicationType?
+  startDate      DateTime        @db.Timestamptz(6)
+  endDate        DateTime?       @db.Timestamptz(6)
+  purchasedAt    DateTime        @db.Timestamptz(6)
+  renewalDate    DateTime?       @db.Timestamptz(6)
+  notes          String?
+  createdAt      DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @db.Timestamptz(6)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  startDate       DateTime
-  endDate         DateTime?
-  medicationName  String
-  medicationType  MedicationType
-  notes           String?
-
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  // Relations
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, startDate])
-  @@index([medicationType])
   @@map("records")
+  @@index([userId, startDate], map: "records_user_start_idx")
+}
+
+model UserShot {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  date        DateTime @db.Timestamptz(6)
+  medication  String   @db.VarChar(150)
+  doseValue   Decimal? @db.Decimal(6, 2)
+  doseUnit    String?  @db.VarChar(50)
+  site        String?  @db.VarChar(200)
+  painLevel   Int?
+  weightKg    Decimal? @db.Decimal(6, 2)
+  caloriesAvg Int?
+  proteinAvgG Int?
+  notes       String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_shots")
+  @@index([userId, date], map: "user_shots_user_date_idx")
 }
 
 model RefreshSession {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @db.Uuid
-  tokenHash   String    @unique
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime @db.Timestamptz(6)
+  revokedAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  userAgent   String?
-  ip          String?
-
-  expiresAt   DateTime
-  revokedAt   DateTime?
-
-  createdAt   DateTime  @default(now())
-
-  // Relations
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([expiresAt])
-  @@index([userId])
   @@map("refresh_sessions")
+  @@index([expiresAt], map: "refresh_sessions_expires_idx")
+  @@index([userId], map: "refresh_sessions_user_idx")
 }
 
 model PasswordResetToken {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @db.Uuid
-  tokenHash   String    @unique
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  expiresAt   DateTime
-  usedAt      DateTime?
-
-  createdAt   DateTime  @default(now())
-
-  // Relations
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([expiresAt])
   @@map("password_reset_tokens")
+  @@index([expiresAt], map: "password_reset_tokens_expires_idx")
 }
 
 model EmailVerificationToken {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @db.Uuid
-  tokenHash   String    @unique
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  expiresAt   DateTime
-  usedAt      DateTime?
-
-  createdAt   DateTime  @default(now())
-
-  // Relations
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([expiresAt])
   @@map("email_verification_tokens")
+  @@index([expiresAt], map: "email_verification_tokens_expires_idx")
 }
 
 model AuditLog {
-  id            String       @id @default(uuid()) @db.Uuid
-  actorUserId   String?      @db.Uuid
-  targetUserId  String?      @db.Uuid
+  id           String       @id @default(uuid()) @db.Uuid
+  actorUserId  String?      @db.Uuid
+  targetUserId String?      @db.Uuid
+  action       AuditAction
+  entityType   String
+  entityId     String?
+  metadata     Json?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+  actor        User?        @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  target       User?        @relation("AuditLogTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
 
-  action        AuditAction
-  entityType    String
-  entityId      String?
-  metadata      Json?
-
-  ip            String?
-  userAgent     String?
-
-  createdAt     DateTime     @default(now())
-
-  // Relations
-  actor         User?        @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  target        User?        @relation("AuditLogTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
-
-  @@index([createdAt])
-  @@index([action])
-  @@index([actorUserId])
   @@map("audit_logs")
+  @@index([createdAt], map: "audit_logs_created_idx")
+  @@index([action], map: "audit_logs_action_idx")
+  @@index([actorUserId], map: "audit_logs_actor_idx")
 }
