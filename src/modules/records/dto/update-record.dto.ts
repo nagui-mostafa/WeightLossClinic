@@ -9,38 +9,38 @@ import {
 } from 'class-validator';
 
 export class UpdateRecordDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Semaglutide' })
   @IsOptional()
   @IsString()
   @MaxLength(200)
   medication?: string;
 
-  @ApiPropertyOptional({ enum: MedicationType })
+  @ApiPropertyOptional({ enum: MedicationType, example: MedicationType.INJECTABLE })
   @IsOptional()
   @IsEnum(MedicationType)
   medicationType?: MedicationType;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2025-09-01T00:00:00.000Z' })
   @IsOptional()
   @IsDateString()
   startDate?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2025-11-24T00:00:00.000Z' })
   @IsOptional()
   @IsDateString()
   endDate?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2025-09-01T10:20:00.000Z' })
   @IsOptional()
   @IsDateString()
   purchasedAt?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2025-11-24T00:00:00.000Z' })
   @IsOptional()
   @IsDateString()
   renewalDate?: string;
 
-  @ApiPropertyOptional({ maxLength: 1000 })
+  @ApiPropertyOptional({ maxLength: 1000, example: 'Weekly injections with nutrition consult.' })
   @IsOptional()
   @IsString()
   @MaxLength(1000)

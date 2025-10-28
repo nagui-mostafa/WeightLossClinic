@@ -6,96 +6,98 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UserProfileDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'd6c2a0f3-f3b9-4d7d-b8fd-6f1b1c5d2d4c' })
   id!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Sarah' })
   firstName!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Adams' })
   lastName!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'sarah.adams@example.com' })
   email!: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '+1 (555) 010-2000' })
   phone?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    example: 'https://i.pravatar.cc/150?img=1',
+  })
   avatarUrl?: string | null;
 
-  @ApiProperty({ enum: Role })
+  @ApiProperty({ enum: Role, example: Role.PATIENT })
   role!: Role;
 
-  @ApiProperty()
+  @ApiProperty({ example: true })
   isEmailVerified!: boolean;
 
-  @ApiProperty()
+  @ApiProperty({ example: true })
   isActive!: boolean;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2025-10-25T15:00:00.000Z' })
   createdAt!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2025-10-26T08:30:00.000Z' })
   updatedAt!: string;
 }
 
 export class UserShippingDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'a1d3f4e5-3d25-4d3b-8b52-4a0ebd24d9b5' })
   id!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Sarah Adams' })
   fullName!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '123 Ocean Ave' })
   address1!: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Unit 4B' })
   address2?: string | null;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Miami' })
   city!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'FL' })
   state!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '33101' })
   postalCode!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'USA' })
   country!: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '+1 (555) 010-2000' })
   phone?: string | null;
 }
 
 export class UserSnapshotDoseDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'Semaglutide' })
   name!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 1.0 })
   value!: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'mg' })
   unit!: string;
 }
 
 export class UserSnapshotAppointmentDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'apt_sarah_2025_10_20' })
   id!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2025-10-20T14:00:00.000Z' })
   startsAt!: string;
 }
 
 export class UserSnapshotDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 165 })
   currentWeightLbs?: number | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 150 })
   goalWeightLbs?: number | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Semaglutide' })
   medicationType?: string | null;
 
   @ApiPropertyOptional({ type: UserSnapshotDoseDto })
@@ -106,102 +108,193 @@ export class UserSnapshotDto {
 }
 
 export class UserActivityDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'act_sarah_1' })
   id!: string;
 
-  @ApiProperty({ enum: ActivityKind })
+  @ApiProperty({ enum: ActivityKind, example: ActivityKind.INJECTION })
   kind!: ActivityKind;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Logged injection' })
   title!: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '1.0 mg Semaglutide' })
   subtitle?: string | null;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2025-10-24T10:00:00.000Z' })
   occurredAt!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2 days ago' })
   when!: string;
 }
 
 export class UserRecordDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'rec_sarah_1' })
   id!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Semaglutide' })
   medication!: string;
 
   @ApiPropertyOptional({ enum: MedicationType })
   medicationType?: MedicationType | null;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2025-09-01T00:00:00.000Z' })
   startDate!: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2025-11-24T00:00:00.000Z' })
   endDate?: string | null;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2025-09-01T10:20:00.000Z' })
   purchasedAt!: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2025-11-24T00:00:00.000Z' })
   renewalDate?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Weekly injections with nutrition consult.' })
   notes?: string | null;
 }
 
 export class UserShotDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'shot_sarah_1' })
   id!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2025-08-18T10:59:00.000Z' })
   dateISO!: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Tirzepatide' })
   medication!: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 7.5 })
   doseValue?: number | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'mg' })
   doseUnit?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Stomach - Upper Left' })
   site?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 1 })
   painLevel?: number | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 89.3 })
   weightKg?: number | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 2000 })
   caloriesAvg?: number | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 89 })
   proteinAvgG?: number | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Felt fine.' })
   notes?: string | null;
 }
 
 export class UserResponseDto {
-  @ApiProperty({ type: UserProfileDto })
+  @ApiProperty({
+    type: UserProfileDto,
+    example: {
+      id: 'd6c2a0f3-f3b9-4d7d-b8fd-6f1b1c5d2d4c',
+      firstName: 'Sarah',
+      lastName: 'Adams',
+      email: 'sarah.adams@example.com',
+      phone: '+1 (555) 010-2000',
+      avatarUrl: 'https://i.pravatar.cc/150?img=1',
+      role: 'PATIENT',
+      isEmailVerified: true,
+      isActive: true,
+      createdAt: '2025-10-25T15:00:00.000Z',
+      updatedAt: '2025-10-26T08:30:00.000Z',
+    },
+  })
   profile!: UserProfileDto;
 
-  @ApiPropertyOptional({ type: UserShippingDto })
+  @ApiPropertyOptional({
+    type: UserShippingDto,
+    example: {
+      id: 'a1d3f4e5-3d25-4d3b-8b52-4a0ebd24d9b5',
+      fullName: 'Sarah Adams',
+      address1: '123 Ocean Ave',
+      address2: 'Unit 4B',
+      city: 'Miami',
+      state: 'FL',
+      postalCode: '33101',
+      country: 'USA',
+      phone: '+1 (555) 010-2000',
+    },
+  })
   shipping?: UserShippingDto | null;
 
-  @ApiPropertyOptional({ type: UserSnapshotDto })
+  @ApiPropertyOptional({
+    type: UserSnapshotDto,
+    example: {
+      currentWeightLbs: 165,
+      goalWeightLbs: 150,
+      medicationType: 'Semaglutide',
+      dose: { name: 'Semaglutide', value: 1, unit: 'mg' },
+      nextAppointment: {
+        id: 'apt_sarah_2025_10_20',
+        startsAt: '2025-10-20T14:00:00.000Z',
+      },
+    },
+  })
   snapshot?: UserSnapshotDto | null;
 
-  @ApiProperty({ type: [UserActivityDto] })
+  @ApiProperty({
+    type: [UserActivityDto],
+    example: [
+      {
+        id: 'act_sarah_1',
+        kind: 'INJECTION',
+        title: 'Logged injection',
+        subtitle: '1.0 mg Semaglutide',
+        occurredAt: '2025-10-24T10:00:00.000Z',
+        when: '2 days ago',
+      },
+      {
+        id: 'act_sarah_2',
+        kind: 'WEIGHT',
+        title: 'Logged weight',
+        subtitle: '165 lbs',
+        occurredAt: '2025-10-23T11:20:00.000Z',
+        when: '3 days ago',
+      },
+    ],
+  })
   activity!: UserActivityDto[];
 
-  @ApiProperty({ type: [UserRecordDto] })
+  @ApiProperty({
+    type: [UserRecordDto],
+    example: [
+      {
+        id: 'rec_sarah_1',
+        medication: 'Semaglutide',
+        medicationType: 'INJECTABLE',
+        startDate: '2025-09-01T00:00:00.000Z',
+        endDate: '2025-11-24T00:00:00.000Z',
+        purchasedAt: '2025-09-01T10:20:00.000Z',
+        renewalDate: '2025-11-24T00:00:00.000Z',
+        notes: 'Weekly injections with nutrition consult.',
+      },
+    ],
+  })
   records!: UserRecordDto[];
 
-  @ApiProperty({ type: [UserShotDto] })
+  @ApiProperty({
+    type: [UserShotDto],
+    example: [
+      {
+        id: 'shot_sarah_1',
+        dateISO: '2025-08-18T10:59:00.000Z',
+        medication: 'Tirzepatide',
+        doseValue: 7.5,
+        doseUnit: 'mg',
+        site: 'Stomach - Upper Left',
+        painLevel: 1,
+        weightKg: 89.3,
+        caloriesAvg: 2000,
+        proteinAvgG: 89,
+        notes: 'Felt fine.',
+      },
+    ],
+  })
   shots!: UserShotDto[];
 }

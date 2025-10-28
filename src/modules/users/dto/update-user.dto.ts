@@ -310,39 +310,118 @@ export class UpdateUserShotDto {
 }
 
 export class UpdateUserDto {
-  @ApiPropertyOptional({ type: UpdateUserProfileDto })
+  @ApiPropertyOptional({
+    type: UpdateUserProfileDto,
+    example: {
+      firstName: 'Sarah',
+      lastName: 'Adams',
+      phone: '+1 (555) 010-2000',
+      avatarUrl: 'https://i.pravatar.cc/150?img=1',
+    },
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => UpdateUserProfileDto)
   profile?: UpdateUserProfileDto;
 
-  @ApiPropertyOptional({ type: UpdateUserShippingDto, nullable: true })
+  @ApiPropertyOptional({
+    type: UpdateUserShippingDto,
+    nullable: true,
+    example: {
+      fullName: 'Sarah Adams',
+      address1: '123 Ocean Ave',
+      address2: 'Unit 4B',
+      city: 'Miami',
+      state: 'FL',
+      postalCode: '33101',
+      country: 'USA',
+      phone: '+1 (555) 010-2000',
+    },
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => UpdateUserShippingDto)
   shipping?: UpdateUserShippingDto | null;
 
-  @ApiPropertyOptional({ type: UpdateUserSnapshotDto, nullable: true })
+  @ApiPropertyOptional({
+    type: UpdateUserSnapshotDto,
+    nullable: true,
+    example: {
+      currentWeightLbs: 165,
+      goalWeightLbs: 150,
+      medicationType: 'Semaglutide',
+      dose: { name: 'Semaglutide', value: 1.0, unit: 'mg' },
+      nextAppointment: {
+        id: 'apt_sarah_2025_10_20',
+        startsAt: '2025-10-20T14:00:00.000Z',
+      },
+    },
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => UpdateUserSnapshotDto)
   snapshot?: UpdateUserSnapshotDto | null;
 
-  @ApiPropertyOptional({ type: [UpdateUserActivityDto] })
+  @ApiPropertyOptional({
+    type: [UpdateUserActivityDto],
+    example: [
+      {
+        kind: 'INJECTION',
+        title: 'Logged injection',
+        subtitle: '1.0 mg Semaglutide',
+        occurredAt: '2025-10-24T10:00:00.000Z',
+      },
+      {
+        kind: 'WEIGHT',
+        title: 'Logged weight',
+        subtitle: '165 lbs',
+        occurredAt: '2025-10-23T11:20:00.000Z',
+      },
+    ],
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UpdateUserActivityDto)
   activity?: UpdateUserActivityDto[];
 
-  @ApiPropertyOptional({ type: [UpdateUserRecordDto] })
+  @ApiPropertyOptional({
+    type: [UpdateUserRecordDto],
+    example: [
+      {
+        medication: 'Semaglutide',
+        medicationType: 'INJECTABLE',
+        startDate: '2025-09-01T00:00:00.000Z',
+        endDate: '2025-11-24T00:00:00.000Z',
+        purchasedAt: '2025-09-01T10:20:00.000Z',
+        renewalDate: '2025-11-24T00:00:00.000Z',
+        notes: 'Weekly injections with nutrition consult.',
+      },
+    ],
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UpdateUserRecordDto)
   records?: UpdateUserRecordDto[];
 
-  @ApiPropertyOptional({ type: [UpdateUserShotDto] })
+  @ApiPropertyOptional({
+    type: [UpdateUserShotDto],
+    example: [
+      {
+        dateISO: '2025-08-18T10:59:00.000Z',
+        medication: 'Tirzepatide',
+        doseValue: 7.5,
+        doseUnit: 'mg',
+        site: 'Stomach - Upper Left',
+        painLevel: 1,
+        weightKg: 89.3,
+        caloriesAvg: 2000,
+        proteinAvgG: 89,
+        notes: 'Felt fine.',
+      },
+    ],
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

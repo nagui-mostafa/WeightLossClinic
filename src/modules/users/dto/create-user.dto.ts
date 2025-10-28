@@ -27,7 +27,7 @@ export class CreateUserDto {
   email!: string;
 
   @ApiPropertyOptional({
-    example: '+14155552671',
+    example: '+1 (555) 010-2000',
     description: 'Phone number (format not enforced)',
   })
   @IsOptional()
@@ -35,9 +35,9 @@ export class CreateUserDto {
   phone?: string;
 
   @ApiProperty({
-    minLength: 1,
-    description: 'Any password is accepted; choose something memorable to you.',
-    example: '123',
+    description:
+      'Any password is accepted; use a secure value in production environments.',
+    example: '12345678',
   })
   @IsString()
   @IsNotEmpty({ message: 'Password cannot be empty' })
