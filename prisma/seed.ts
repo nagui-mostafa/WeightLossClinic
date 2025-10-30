@@ -51,6 +51,21 @@ type ActivitySeed = {
   occurredAt: string;
 };
 
+type BlogSectionSeed = {
+  id: string;
+  title: string;
+  content: string;
+};
+
+type BlogSeed = {
+  token: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  imgSrc: string;
+  body: BlogSectionSeed[];
+};
+
 type PatientSeed = {
   profile: {
     firstName: string;
@@ -1021,6 +1036,223 @@ const patientSeeds: PatientSeed[] = [
   },
 ];
 
+const blogSeeds: BlogSeed[] = [
+  {
+    token: 'sexual-health-naturally',
+    title: 'Enhancing Sexual Health Naturally',
+    excerpt:
+      'Expert tips to improve intimacy, performance, and relationship wellness.',
+    category: 'Sexual Health',
+    imgSrc: '/images/landing/blog1.png',
+    body: [
+      {
+        id: 'understanding-intimacy',
+        title: 'Understanding Intimacy and Sexual Health',
+        content:
+          '<p>Sexual health is a cornerstone of overall wellness. At Joey Med, we know that issues around intimacy can impact confidence, relationships, and emotional health. Our telehealth platform allows patients to discuss concerns privately and receive tailored care without stigma or judgment.</p><p>Sexual wellness goes beyond performance — it includes mental health, emotional connection, and lifestyle choices. By addressing these together, we help patients rediscover confidence and improve their quality of life.</p>',
+      },
+      {
+        id: 'natural-approaches',
+        title: 'Natural Approaches to Improving Sexual Wellness',
+        content:
+          '<p>While medical treatments can play an important role, many patients see improvement with natural adjustments to daily habits. Diet, exercise, stress management, and sleep patterns all influence sexual performance and satisfaction.</p><ul><li>Balanced nutrition to support hormones</li><li>Regular exercise to improve circulation</li><li>Mindfulness practices to reduce anxiety</li><li>Adequate sleep for recovery and energy</li></ul>',
+      },
+      {
+        id: 'telehealth-solutions',
+        title: 'How Telehealth Supports Sexual Health',
+        content:
+          '<p>Joey Med provides discreet, professional care through virtual consultations. Our providers specialize in conditions like erectile dysfunction, low libido, and hormone imbalances. Through HIPAA-compliant systems, patients can access care from home and receive medications shipped directly to their door.</p>',
+      },
+      {
+        id: 'ongoing-support',
+        title: 'Ongoing Support for Lasting Confidence',
+        content:
+          '<p>Sexual health is not a one-time issue — it requires ongoing support. Joey Med ensures patients have follow-ups, prescription adjustments, and continuous access to expert advice. Our goal is to build lasting confidence and intimacy for every patient.</p>',
+      },
+    ],
+  },
+];
+
+const adminSeedBase = {
+  records: [
+    {
+      id: 'admin_rec_base_1',
+      medication: 'Semaglutide',
+      medicationType: MedicationType.INJECTABLE,
+      startDate: '2025-09-01T00:00:00.000Z',
+      endDate: '2025-11-01T00:00:00.000Z',
+      purchasedAt: '2025-09-01T09:00:00.000Z',
+      renewalDate: '2025-11-15T00:00:00.000Z',
+      notes: 'Administrative monitoring record.',
+    },
+  ],
+  shots: [
+    {
+      id: 'admin_shot_base_1',
+      date: '2025-09-10T09:00:00.000Z',
+      medication: 'Semaglutide',
+      doseValue: 1,
+      doseUnit: 'mg',
+      site: 'Right abdomen',
+      painLevel: 1,
+      weightKg: 90,
+      caloriesAvg: 2100,
+      proteinAvgG: 95,
+      notes: 'Admin sample shot record.',
+    },
+  ],
+  activities: [
+    {
+      id: 'admin_act_base_1',
+      kind: ActivityKind.NOTE,
+      title: 'Admin logged activity',
+      subtitle: 'System oversight',
+      occurredAt: '2025-10-24T12:00:00.000Z',
+    },
+  ],
+};
+
+function subtractDays(base: Date, days: number): Date {
+  const copy = new Date(base);
+  copy.setUTCDate(copy.getUTCDate() - days);
+  return copy;
+}
+
+function buildRecordSeries(
+  baseRecords: RecordSeed[],
+  count = 10,
+): RecordSeed[] {
+  const fallback: RecordSeed = baseRecords[0] ?? {
+    id: 'fallback-record',
+    medication: 'Semaglutide',
+    medicationType: MedicationType.INJECTABLE,
+    startDate: '2025-09-01T00:00:00.000Z',
+    endDate: '2025-10-01T00:00:00.000Z',
+    purchasedAt: '2025-09-01T09:00:00.000Z',
+    renewalDate: '2025-10-15T00:00:00.000Z',
+    notes: 'Auto-generated record.',
+  };
+
+  const baseStart = new Date(fallback.startDate);
+
+  return Array.from({ length: count }, (_, idx) => {
+    const template = baseRecords[idx % baseRecords.length] ?? fallback;
+    const start = subtractDays(baseStart, idx * 28);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 28);
+    const purchased = new Date(start);
+    purchased.setUTCHours(10, 20, 0, 0);
+    const renewal = new Date(end);
+    renewal.setUTCDate(renewal.getUTCDate() + 7);
+
+    return {
+      id: randomUUID(),
+      medication: `${template.medication} Cycle ${idx + 1}`,
+      medicationType: template.medicationType ?? fallback.medicationType,
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+      purchasedAt: purchased.toISOString(),
+      renewalDate: renewal.toISOString(),
+      notes: template.notes ?? `Auto-generated record ${idx + 1}`,
+    };
+  });
+}
+
+function buildShotSeries(baseShots: ShotSeed[], count = 10): ShotSeed[] {
+  const fallback: ShotSeed = baseShots[0] ?? {
+    id: 'fallback-shot',
+    date: '2025-09-10T09:00:00.000Z',
+    medication: 'Semaglutide',
+    doseValue: 1,
+    doseUnit: 'mg',
+    site: 'Right abdomen',
+    painLevel: 1,
+    weightKg: 90,
+    caloriesAvg: 2100,
+    proteinAvgG: 95,
+    notes: 'Auto-generated shot.',
+  };
+
+  const baseDate = new Date(fallback.date);
+
+  return Array.from({ length: count }, (_, idx) => {
+    const template = baseShots[idx % baseShots.length] ?? fallback;
+    const date = subtractDays(baseDate, idx * 7);
+    const doseValue = Number(template.doseValue ?? fallback.doseValue) + idx * 0.1;
+    const weightKg = Math.max(
+      40,
+      Number(template.weightKg ?? fallback.weightKg) - idx * 0.4,
+    );
+    const caloriesAvg = Math.max(
+      1200,
+      Math.round((template.caloriesAvg ?? fallback.caloriesAvg) - idx * 15),
+    );
+    const proteinAvgG = Math.max(
+      0,
+      Math.round(template.proteinAvgG ?? fallback.proteinAvgG) + idx,
+    );
+    const painLevel = Math.max(
+      0,
+      Math.min(
+        10,
+        Math.round((template.painLevel ?? fallback.painLevel) + ((idx % 3) - 1)),
+      ),
+    );
+
+    return {
+      id: randomUUID(),
+      date: date.toISOString(),
+      medication: template.medication,
+      doseValue: parseFloat(doseValue.toFixed(2)),
+      doseUnit: template.doseUnit ?? fallback.doseUnit,
+      site: template.site ?? `Rotation site ${idx + 1}`,
+      painLevel,
+      weightKg: parseFloat(weightKg.toFixed(1)),
+      caloriesAvg,
+      proteinAvgG,
+      notes: template.notes ?? `Auto-generated shot ${idx + 1}`,
+    };
+  });
+}
+
+function buildActivitySeries(
+  baseActivities: ActivitySeed[],
+  count = 10,
+): ActivitySeed[] {
+  const fallback: ActivitySeed = baseActivities[0] ?? {
+    id: 'fallback-activity',
+    kind: ActivityKind.NOTE,
+    title: 'Progress note',
+    subtitle: 'Auto-generated entry',
+    occurredAt: '2025-10-24T12:00:00.000Z',
+  };
+
+  const baseDate = new Date(fallback.occurredAt);
+  const activityKindsSequence = [
+    ActivityKind.INJECTION,
+    ActivityKind.WEIGHT,
+    ActivityKind.WORKOUT,
+    ActivityKind.MESSAGE,
+    ActivityKind.NOTE,
+    ActivityKind.RECORD,
+    ActivityKind.SHOT,
+  ];
+
+  return Array.from({ length: count }, (_, idx) => {
+    const template = baseActivities[idx % baseActivities.length] ?? fallback;
+    const occurredAt = subtractDays(baseDate, idx * 2);
+
+    return {
+      id: randomUUID(),
+      kind:
+        template.kind ?? activityKindsSequence[idx % activityKindsSequence.length],
+      title: `${template.title} #${idx + 1}`,
+      subtitle: template.subtitle ?? `Detail ${idx + 1}`,
+      occurredAt: occurredAt.toISOString(),
+    };
+  });
+}
+
 async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password, {
     type: argon2.argon2id,
@@ -1037,6 +1269,7 @@ async function resetDatabase() {
     prisma.record.deleteMany(),
     prisma.userSnapshot.deleteMany(),
     prisma.userShipping.deleteMany(),
+    prisma.blog.deleteMany(),
     prisma.refreshSession.deleteMany(),
     prisma.passwordResetToken.deleteMany(),
     prisma.emailVerificationToken.deleteMany(),
@@ -1047,6 +1280,10 @@ async function resetDatabase() {
 
 async function seedAdmin(adminEmail: string, adminPassword: string) {
   const passwordHash = await hashPassword(adminPassword);
+
+  const records = buildRecordSeries(adminSeedBase.records);
+  const shots = buildShotSeries(adminSeedBase.shots);
+  const activities = buildActivitySeries(adminSeedBase.activities);
 
   await prisma.user.create({
     data: {
@@ -1075,6 +1312,44 @@ async function seedAdmin(adminEmail: string, adminPassword: string) {
           medicationType: 'N/A',
         },
       },
+      records: {
+        create: records.map((record) => ({
+          id: record.id,
+          medication: record.medication,
+          medicationType: record.medicationType ?? null,
+          startDate: new Date(record.startDate),
+          endDate: record.endDate ? new Date(record.endDate) : null,
+          purchasedAt: new Date(record.purchasedAt),
+          renewalDate: record.renewalDate
+            ? new Date(record.renewalDate)
+            : null,
+          notes: record.notes,
+        })),
+      },
+      shots: {
+        create: shots.map((shot) => ({
+          id: shot.id,
+          date: new Date(shot.date),
+          medication: shot.medication,
+          doseValue: shot.doseValue,
+          doseUnit: shot.doseUnit,
+          site: shot.site,
+          painLevel: shot.painLevel,
+          weightKg: shot.weightKg,
+          caloriesAvg: shot.caloriesAvg,
+          proteinAvgG: shot.proteinAvgG,
+          notes: shot.notes,
+        })),
+      },
+      activities: {
+        create: activities.map((activity) => ({
+          id: activity.id,
+          kind: activity.kind,
+          title: activity.title,
+          subtitle: activity.subtitle,
+          occurredAt: new Date(activity.occurredAt),
+        })),
+      },
     },
   });
 }
@@ -1084,6 +1359,9 @@ async function seedPatients() {
 
   for (const patient of patientSeeds) {
     const passwordHash = await hashPassword(DEFAULT_PASSWORD);
+    const records = buildRecordSeries(patient.records);
+    const shots = buildShotSeries(patient.shots);
+    const activities = buildActivitySeries(patient.activities);
 
     await prisma.user.create({
       data: {
@@ -1122,10 +1400,10 @@ async function seedPatients() {
           },
         },
         records: {
-          create: patient.records.map((record) => ({
-            id: randomUUID(),
+          create: records.map((record) => ({
+            id: record.id,
             medication: record.medication,
-            medicationType: record.medicationType,
+            medicationType: record.medicationType ?? null,
             startDate: new Date(record.startDate),
             endDate: record.endDate ? new Date(record.endDate) : null,
             purchasedAt: new Date(record.purchasedAt),
@@ -1136,8 +1414,8 @@ async function seedPatients() {
           })),
         },
         shots: {
-          create: patient.shots.map((shot) => ({
-            id: randomUUID(),
+          create: shots.map((shot) => ({
+            id: shot.id,
             date: new Date(shot.date),
             medication: shot.medication,
             doseValue: shot.doseValue,
@@ -1151,8 +1429,8 @@ async function seedPatients() {
           })),
         },
         activities: {
-          create: patient.activities.map((activity) => ({
-            id: randomUUID(),
+          create: activities.map((activity) => ({
+            id: activity.id,
             kind: activity.kind,
             title: activity.title,
             subtitle: activity.subtitle,
@@ -1171,6 +1449,29 @@ async function seedPatients() {
   return credentials;
 }
 
+async function seedBlogs() {
+  for (const blog of blogSeeds) {
+    await prisma.blog.upsert({
+      where: { token: blog.token },
+      update: {
+        title: blog.title,
+        excerpt: blog.excerpt,
+        category: blog.category,
+        imgSrc: blog.imgSrc,
+        body: blog.body,
+      },
+      create: {
+        token: blog.token,
+        title: blog.title,
+        excerpt: blog.excerpt,
+        category: blog.category,
+        imgSrc: blog.imgSrc,
+        body: blog.body,
+      },
+    });
+  }
+}
+
 async function main() {
   const adminEmail =
     process.env.SEED_ADMIN_EMAIL || 'admin@weightlossclinic.com';
@@ -1184,6 +1485,9 @@ async function main() {
 
   console.log('Seeding patient accounts...');
   const patientCredentials = await seedPatients();
+
+  console.log('Seeding blogs...');
+  await seedBlogs();
 
   console.log('\n✅ Seed complete');
   console.log(`Admin -> ${adminEmail} / ${adminPassword}`);
