@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, Blog } from '@prisma/client';
 import { PrismaService } from '../common/services/prisma.service';
 import { CreateBlogDto, UpdateBlogDto } from './dto/create-blog.dto';
 import { BlogResponseDto } from './dto/blog-response.dto';
@@ -48,20 +48,34 @@ export class BlogsService {
   }
 
   private toPersistence(dto: CreateBlogDto): Prisma.BlogCreateInput {
+    const sections = Array.isArray(dto.body)
+      ? dto.body.map((section, index) => ({
+          id: String(section?.id ?? `section-${index + 1}`),
+          title: String(section?.title ?? ''),
+          content: String(section?.content ?? ''),
+        }))
+      : [];
+
     return {
-      token: dto.token,
-      title: dto.title,
-      excerpt: dto.excerpt,
-      category: dto.category,
-      imgSrc: dto.imgSrc,
-      body: dto.body.map((section) => ({ ...section })),
+      token: String(dto.token ?? ''),
+      title: String(dto.title ?? ''),
+      excerpt: String(dto.excerpt ?? ''),
+      category: String(dto.category ?? ''),
+      imgSrc: String(dto.imgSrc ?? ''),
+      body: sections,
     };
   }
 
-  private toResponse(blog: Prisma.BlogGetPayload<{}>): BlogResponseDto {
-    const body = Array.isArray(blog.body)
-      ? (blog.body as unknown as BlogSectionDto[])
-      : [];
+  private toResponse(blog: Blog): BlogResponseDto {
+    const rawBody = Array.isArray(blog.body) ? blog.body : [];
+    const body = rawBody.map((section: unknown, index: number) => {
+      const cast = section as Partial<BlogSectionDto>;
+      return {
+        id: String(cast?.id ?? `section-${index + 1}`),
+        title: String(cast?.title ?? ''),
+        content: String(cast?.content ?? ''),
+      };
+    });
 
     return {
       id: blog.id,
