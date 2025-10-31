@@ -69,6 +69,7 @@ model User {
   activities             UserActivity[]
   records                Record[]
   shots                  UserShot[]
+  notifications          UserNotification[]
   refreshSessions        RefreshSession[]
   passwordResetTokens    PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
@@ -144,6 +145,7 @@ model Record {
   createdAt      DateTime        @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime        @default(now()) @updatedAt @db.Timestamptz(6)
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications  UserNotification[]
 
   @@map("records")
   @@index([userId, startDate], map: "records_user_start_idx")
@@ -245,4 +247,23 @@ model Blog {
 
   @@map("blogs")
   @@index([token], map: "blogs_token_idx")
+}
+
+model UserNotification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  recordId  String?  @db.Uuid
+  title     String   @db.VarChar(200)
+  message   String   @db.VarChar(500)
+  dueDate   DateTime? @db.Timestamptz(6)
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  record Record? @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@map("user_notifications")
+  @@unique([userId, recordId], map: "user_notifications_user_record_unique")
+  @@index([userId, read, dueDate], map: "user_notifications_user_read_due_idx")
 }

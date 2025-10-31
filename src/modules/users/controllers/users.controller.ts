@@ -31,7 +31,10 @@ import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateUserRoleDto } from '../dto/update-user-role.dto';
 import { UpdateUserStatusDto } from '../dto/update-user-status.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
-import { UserResponseDto } from '../dto/user-response.dto';
+import {
+  UserResponseDto,
+  UserNotificationDto,
+} from '../dto/user-response.dto';
 import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
 import { RequestContext } from '../../common/interfaces/request-context.interface';
 
@@ -156,6 +159,38 @@ export class UsersController {
       actor,
       this.toRequestContext(request, actor?.id),
     );
+  }
+
+  @Get(':id/notifications')
+  @ApiOperation({ summary: 'List notifications for a user (admin or owner)' })
+  @ApiOkResponse({ type: [UserNotificationDto] })
+  async listNotifications(
+    @Param('id') id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<UserNotificationDto[]> {
+    return this.usersService.listNotifications(id, actor);
+  }
+
+  @Patch(':id/notifications/:notificationId/read')
+  @ApiOperation({ summary: 'Mark notification as read (admin or owner)' })
+  @ApiOkResponse({ type: UserNotificationDto })
+  async markNotificationRead(
+    @Param('id') id: string,
+    @Param('notificationId') notificationId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<UserNotificationDto> {
+    return this.usersService.markNotificationRead(id, notificationId, actor);
+  }
+
+  @Delete(':id/notifications/:notificationId')
+  @ApiOperation({ summary: 'Delete a notification (admin or owner)' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteNotification(
+    @Param('id') id: string,
+    @Param('notificationId') notificationId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<void> {
+    await this.usersService.deleteNotification(id, notificationId, actor);
   }
 
   private toRequestContext(request: Request, userId?: string): RequestContext {

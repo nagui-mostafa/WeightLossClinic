@@ -1118,6 +1118,12 @@ function subtractDays(base: Date, days: number): Date {
   return copy;
 }
 
+function addDays(base: Date, days: number): Date {
+  const copy = new Date(base);
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+}
+
 function buildRecordSeries(
   baseRecords: RecordSeed[],
   count = 10,
@@ -1363,7 +1369,7 @@ async function seedPatients() {
     const shots = buildShotSeries(patient.shots);
     const activities = buildActivitySeries(patient.activities);
 
-    await prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         email: patient.profile.email.toLowerCase(),
         passwordHash,
@@ -1440,6 +1446,38 @@ async function seedPatients() {
       },
     });
 
+    const userRecords = await prisma.record.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'asc' },
+      take: 2,
+    });
+
+    if (userRecords[0]) {
+      const dueSoon = addDays(new Date(), 3);
+      await prisma.record.update({
+        where: { id: userRecords[0].id },
+        data: {
+          renewalDate: dueSoon,
+          endDate: subtractDays(dueSoon, 7),
+          startDate: subtractDays(dueSoon, 28),
+          purchasedAt: subtractDays(dueSoon, 32),
+        },
+      });
+    }
+
+    if (userRecords[1]) {
+      const dueLater = addDays(new Date(), 14);
+      await prisma.record.update({
+        where: { id: userRecords[1].id },
+        data: {
+          renewalDate: dueLater,
+          endDate: subtractDays(dueLater, 7),
+          startDate: subtractDays(dueLater, 28),
+          purchasedAt: subtractDays(dueLater, 34),
+        },
+      });
+    }
+
     credentials.push({
       email: patient.profile.email.toLowerCase(),
       password: DEFAULT_PASSWORD,
@@ -1447,6 +1485,59 @@ async function seedPatients() {
   }
 
   return credentials;
+}
+
+async function seedRenewalNotifications() {
+  const now = new Date();
+  const threshold = addDays(now, 7);
+
+  const dueRecords = await prisma.record.findMany({
+    where: {
+      renewalDate: {
+        not: null,
+        gte: now,
+        lte: threshold,
+      },
+    },
+    select: {
+      id: true,
+      userId: true,
+      medication: true,
+      renewalDate: true,
+    },
+  });
+
+  for (const record of dueRecords) {
+    if (!record.renewalDate) {
+      continue;
+    }
+
+    const dateStr = record.renewalDate.toISOString().split('T')[0];
+    const message = `Your ${record.medication} plan renews on ${dateStr}.`;
+
+    await prisma.userNotification.upsert({
+      where: {
+        userId_recordId: {
+          userId: record.userId,
+          recordId: record.id,
+        },
+      },
+      update: {
+        title: 'Renewal reminder',
+        message,
+        dueDate: record.renewalDate,
+        read: false,
+      },
+      create: {
+        userId: record.userId,
+        recordId: record.id,
+        title: 'Renewal reminder',
+        message,
+        dueDate: record.renewalDate,
+        read: false,
+      },
+    });
+  }
 }
 
 async function seedBlogs() {
@@ -1488,6 +1579,9 @@ async function main() {
 
   console.log('Seeding blogs...');
   await seedBlogs();
+
+  console.log('Seeding notifications...');
+  await seedRenewalNotifications();
 
   console.log('\n✅ Seed complete');
   console.log(`Admin -> ${adminEmail} / ${adminPassword}`);

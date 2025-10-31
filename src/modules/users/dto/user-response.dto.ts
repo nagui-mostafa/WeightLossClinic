@@ -5,6 +5,39 @@ import {
 } from '../../common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export class UserNotificationRecordDto {
+  @ApiProperty({ example: 'rec_sarah_1' })
+  id!: string;
+
+  @ApiProperty({ example: 'Semaglutide' })
+  medication!: string;
+
+  @ApiPropertyOptional({ example: '2025-11-24T00:00:00.000Z' })
+  renewalDate?: string | null;
+}
+
+export class UserNotificationDto {
+  @ApiProperty({ example: 'notif_01' })
+  id!: string;
+
+  @ApiProperty({ example: 'Renewal reminder' })
+  title!: string;
+
+  @ApiProperty({
+    example: 'Your Semaglutide plan renews on 2025-11-24.',
+  })
+  message!: string;
+
+  @ApiPropertyOptional({ example: '2025-11-24T00:00:00.000Z' })
+  dueDate?: string | null;
+
+  @ApiProperty({ example: false })
+  read!: boolean;
+
+  @ApiPropertyOptional({ type: UserNotificationRecordDto })
+  record?: UserNotificationRecordDto | null;
+}
+
 export class UserProfileDto {
   @ApiProperty({ example: 'd6c2a0f3-f3b9-4d7d-b8fd-6f1b1c5d2d4c' })
   id!: string;
@@ -297,4 +330,23 @@ export class UserResponseDto {
     ],
   })
   shots!: UserShotDto[];
+
+  @ApiProperty({
+    type: [UserNotificationDto],
+    example: [
+      {
+        id: 'notif_sarah_1',
+        title: 'Renewal reminder',
+        message: 'Your Semaglutide plan renews on 2025-11-24.',
+        dueDate: '2025-11-24T00:00:00.000Z',
+        read: false,
+        record: {
+          id: 'rec_sarah_1',
+          medication: 'Semaglutide',
+          renewalDate: '2025-11-24T00:00:00.000Z',
+        },
+      },
+    ],
+  })
+  notifications!: UserNotificationDto[];
 }

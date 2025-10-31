@@ -5,15 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type {
-  Prisma,
-  User as PrismaUserModel,
-  UserShipping as PrismaUserShipping,
-  UserSnapshot as PrismaUserSnapshot,
-  UserActivity as PrismaUserActivity,
-  UserShot as PrismaUserShot,
-  Record as PrismaRecordModel,
-} from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import {
   PrismaService,
   AuditLogService,
@@ -29,35 +21,51 @@ import {
 } from '../../common/interfaces/paginated-result.interface';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { decimalToNumber, exclude } from '../../common/utils/prisma.utils';
-import { formatRelativeTime } from '../../common/utils/time.utils';
+import { addDays, formatRelativeTime } from '../../common/utils/time.utils';
 import { RequestContext } from '../../common/interfaces/request-context.interface';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateUserRoleDto } from '../dto/update-user-role.dto';
 import { UpdateUserStatusDto } from '../dto/update-user-status.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
-import { UserResponseDto } from '../dto/user-response.dto';
+import { UserResponseDto, UserNotificationDto } from '../dto/user-response.dto';
 import { PrismaKnownError } from '../../common/services/prisma.service';
 
-type UserGraph = PrismaUserModel & {
-  shipping: PrismaUserShipping | null;
-  snapshot: PrismaUserSnapshot | null;
-  activities: PrismaUserActivity[];
-  records: PrismaRecordModel[];
-  shots: PrismaUserShot[];
-};
+const userInclude = {
+  shipping: true,
+  snapshot: true,
+  activities: { orderBy: { occurredAt: 'desc' } },
+  records: { orderBy: { startDate: 'desc' } },
+  shots: { orderBy: { date: 'desc' } },
+  notifications: {
+    include: {
+      record: {
+        select: {
+          id: true,
+          medication: true,
+          renewalDate: true,
+        },
+      },
+    },
+    orderBy: [
+      { read: 'asc' },
+      { dueDate: 'asc' },
+      { createdAt: 'desc' },
+    ],
+  },
+} as const satisfies Prisma.UserInclude;
+
+type UserGraph = Prisma.UserGetPayload<{ include: typeof userInclude }>;
+
+type NotificationEntity = UserGraph['notifications'][number];
+
+type PrismaUserModel = Prisma.UserGetPayload<{}>;
 
 type Actor = { id: string; role: Role };
 
 @Injectable()
 export class UsersService {
-  private readonly userInclude = {
-    shipping: true,
-    snapshot: true,
-    activities: { orderBy: { occurredAt: 'desc' } },
-    records: { orderBy: { startDate: 'desc' } },
-    shots: { orderBy: { date: 'desc' } },
-  } as const;
+  private readonly userInclude = userInclude;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -206,16 +214,28 @@ export class UsersService {
 
     const orderBy = this.parseSort(query.sort);
 
-    const [totalItems, users] = await this.prisma.$transaction([
+    const [totalItems, userIdRows] = await this.prisma.$transaction([
       this.prisma.user.count({ where }),
       this.prisma.user.findMany({
         where,
         skip,
         take: limit,
         orderBy,
-        include: this.userInclude,
+        select: { id: true },
       }),
     ]);
+
+    await Promise.all(
+      userIdRows.map((row) => this.syncRenewalNotifications(row.id)),
+    );
+
+    const users = await this.prisma.user.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy,
+      include: this.userInclude,
+    });
 
     return {
       data: users.map((user) => this.toResponseDto(user as UserGraph)),
@@ -575,6 +595,76 @@ export class UsersService {
     return this.toResponseDto(user);
   }
 
+  async listNotifications(userId: string, actor: Actor): Promise<UserNotificationDto[]> {
+    this.ensureUserAccess(actor, userId);
+    await this.syncRenewalNotifications(userId);
+
+    const notifications = await this.prisma.userNotification.findMany({
+      where: { userId },
+      include: {
+        record: {
+          select: { id: true, medication: true, renewalDate: true },
+        },
+      },
+      orderBy: [{ read: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+    });
+
+    return notifications.map((notification) =>
+      this.toNotificationDto(notification as NotificationEntity),
+    );
+  }
+
+  async markNotificationRead(
+    userId: string,
+    notificationId: string,
+    actor: Actor,
+  ): Promise<UserNotificationDto> {
+    this.ensureUserAccess(actor, userId);
+
+    const notification = await this.prisma.userNotification.findUnique({
+      where: { id: notificationId },
+      include: {
+        record: {
+          select: { id: true, medication: true, renewalDate: true },
+        },
+      },
+    });
+
+    if (!notification || notification.userId !== userId) {
+      throw new NotFoundException('Notification not found');
+    }
+
+    const updated = await this.prisma.userNotification.update({
+      where: { id: notificationId },
+      data: { read: true },
+      include: {
+        record: {
+          select: { id: true, medication: true, renewalDate: true },
+        },
+      },
+    });
+
+    return this.toNotificationDto(updated as NotificationEntity);
+  }
+
+  async deleteNotification(
+    userId: string,
+    notificationId: string,
+    actor: Actor,
+  ): Promise<void> {
+    this.ensureUserAccess(actor, userId);
+
+    const notification = await this.prisma.userNotification.findUnique({
+      where: { id: notificationId },
+    });
+
+    if (!notification || notification.userId !== userId) {
+      throw new NotFoundException('Notification not found');
+    }
+
+    await this.prisma.userNotification.delete({ where: { id: notificationId } });
+  }
+
   private parseSort(sort?: string) {
     if (!sort) {
       return { createdAt: 'desc' } as const;
@@ -595,6 +685,92 @@ export class UsersService {
     }
 
     return { [field]: dir } as Record<string, 'asc' | 'desc'>;
+  }
+
+  private async syncRenewalNotifications(userId: string): Promise<void> {
+    const now = new Date();
+    const threshold = addDays(now, 7);
+
+    const records = await this.prisma.record.findMany({
+      where: {
+        userId,
+        renewalDate: {
+          not: null,
+        },
+      },
+      select: {
+        id: true,
+        medication: true,
+        renewalDate: true,
+      },
+    });
+
+    const dueRecords = records.filter((record) => {
+      if (!record.renewalDate) {
+        return false;
+      }
+      const due = record.renewalDate;
+      return due >= now && due <= threshold;
+    });
+
+    const dueRecordIds = dueRecords.map((record) => record.id);
+
+    if (dueRecordIds.length === 0) {
+      await this.prisma.userNotification.deleteMany({ where: { userId } });
+      return;
+    }
+
+    await this.prisma.userNotification.deleteMany({
+      where: {
+        userId,
+        recordId: { notIn: dueRecordIds },
+      },
+    });
+
+    await this.prisma.userNotification.deleteMany({
+      where: {
+        userId,
+        recordId: null,
+      },
+    });
+
+    for (const record of dueRecords) {
+      const dueDate = record.renewalDate!;
+      const message = this.buildRenewalMessage(record.medication, dueDate);
+
+      await this.prisma.userNotification.upsert({
+        where: {
+          userId_recordId: {
+            userId,
+            recordId: record.id,
+          },
+        },
+        update: {
+          title: 'Renewal reminder',
+          message,
+          dueDate,
+        },
+        create: {
+          userId,
+          recordId: record.id,
+          title: 'Renewal reminder',
+          message,
+          dueDate,
+          read: false,
+        },
+      });
+    }
+  }
+
+  private buildRenewalMessage(medication: string, dueDate: Date): string {
+    const dateStr = dueDate.toISOString().split('T')[0];
+    return `Your ${medication} plan renews on ${dateStr}.`;
+  }
+
+  private ensureUserAccess(actor: Actor, userId: string): void {
+    if (actor.role !== Role.ADMIN && actor.id !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
   }
 
   private async ensurePhoneUnique(
@@ -642,6 +818,8 @@ export class UsersService {
   }
 
   private async getFullUserOrThrow(id: string): Promise<UserGraph> {
+    await this.syncRenewalNotifications(id);
+
     const user = await this.prisma.user.findUnique({
       where: { id },
       include: this.userInclude,
@@ -750,6 +928,12 @@ export class UsersService {
       notes: shot.notes ?? null,
     }));
 
+    const notifications = sanitized.notifications
+      ? sanitized.notifications.map((notification) =>
+          this.toNotificationDto(notification as NotificationEntity),
+        )
+      : [];
+
     return {
       profile,
       shipping,
@@ -757,6 +941,30 @@ export class UsersService {
       activity,
       records,
       shots,
+      notifications,
+    };
+  }
+
+  private toNotificationDto(
+    notification: NotificationEntity,
+  ): UserNotificationDto {
+    return {
+      id: notification.id,
+      title: notification.title,
+      message: notification.message,
+      dueDate: notification.dueDate
+        ? notification.dueDate.toISOString()
+        : null,
+      read: notification.read,
+      record: notification.record
+        ? {
+            id: notification.record.id,
+            medication: notification.record.medication,
+            renewalDate: notification.record.renewalDate
+              ? notification.record.renewalDate.toISOString()
+              : null,
+          }
+        : null,
     };
   }
 }

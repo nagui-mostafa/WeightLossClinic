@@ -40,6 +40,12 @@ export function addMilliseconds(date: Date, ms: number): Date {
   return new Date(date.getTime() + ms);
 }
 
+export function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
 export function formatRelativeTime(date: Date, base: Date = new Date()): string {
   const diffMs = base.getTime() - date.getTime();
   const absDiffMs = Math.abs(diffMs);
