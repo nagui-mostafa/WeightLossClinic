@@ -15,31 +15,29 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { Roles, RolesGuard } from '../common';
+import { Public, Roles, RolesGuard } from '../common';
 import { Role } from '../common/enums/role.enum';
 import { BlogsService } from './blogs.service';
 import { BlogResponseDto } from './dto/blog-response.dto';
 import { CreateBlogDto, UpdateBlogDto } from './dto/create-blog.dto';
 
 @ApiTags('blogs')
-@ApiBearerAuth('JWT-auth')
-@UseGuards(RolesGuard)
 @Controller('blogs')
 export class BlogsController {
   constructor(private readonly blogsService: BlogsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all blogs (admin only)' })
+  @Public()
+  @ApiOperation({ summary: 'List all blogs (public)' })
   @ApiOkResponse({ type: [BlogResponseDto] })
-  @Roles(Role.ADMIN)
   list(): Promise<BlogResponseDto[]> {
     return this.blogsService.findAll();
   }
 
   @Get(':token')
-  @ApiOperation({ summary: 'Retrieve a blog by token (admin only)' })
+  @Public()
+  @ApiOperation({ summary: 'Retrieve a blog by token (public)' })
   @ApiOkResponse({ type: BlogResponseDto })
-  @Roles(Role.ADMIN)
   getByToken(@Param('token') token: string): Promise<BlogResponseDto> {
     return this.blogsService.findByToken(token);
   }
@@ -47,6 +45,8 @@ export class BlogsController {
   @Post()
   @ApiOperation({ summary: 'Create a new blog (admin only)' })
   @ApiCreatedResponse({ type: BlogResponseDto })
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   create(@Body() dto: CreateBlogDto): Promise<BlogResponseDto> {
     return this.blogsService.create(dto);
@@ -55,6 +55,8 @@ export class BlogsController {
   @Put(':token')
   @ApiOperation({ summary: 'Replace a blog by token (admin only)' })
   @ApiOkResponse({ type: BlogResponseDto })
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   update(
     @Param('token') token: string,
@@ -65,6 +67,8 @@ export class BlogsController {
 
   @Delete(':token')
   @ApiOperation({ summary: 'Delete a blog by token (admin only)' })
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   async remove(@Param('token') token: string): Promise<void> {
     await this.blogsService.remove(token);
