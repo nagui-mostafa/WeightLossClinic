@@ -8,7 +8,7 @@
   - Parallelism: 2
 - Minimum password complexity enforced via DTO validation:
   - ≥ 12 characters, at least one uppercase, lowercase, digit, special char.
-- Access token TTL: default 15 minutes (`ACCESS_TOKEN_TTL`).
+- Access token TTL: default 3 days (`ACCESS_TOKEN_TTL`).
 - Refresh token TTL: default 14 days (`REFRESH_TOKEN_TTL`).
 - Password reset tokens: 15 minutes (`PASSWORD_RESET_TOKEN_TTL`).
 - Email verification tokens: 24 hours (`EMAIL_VERIFICATION_TOKEN_TTL`).

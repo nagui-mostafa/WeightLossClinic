@@ -22,7 +22,7 @@ export class TokensService {
     private readonly configService: ConfigService,
   ) {
     this.accessTokenTtl =
-      this.configService.get<string>('ACCESS_TOKEN_TTL') ?? '15m';
+      this.configService.get<string>('ACCESS_TOKEN_TTL') ?? '3d';
     this.refreshTokenTtl =
       this.configService.get<string>('REFRESH_TOKEN_TTL') ?? '14d';
 

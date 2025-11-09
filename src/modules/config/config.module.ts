@@ -23,7 +23,7 @@ import configuration from './configuration';
         // JWT
         JWT_ACCESS_SECRET: Joi.string().required(),
         JWT_REFRESH_SECRET: Joi.string().required(),
-        ACCESS_TOKEN_TTL: Joi.string().default('15m'),
+        ACCESS_TOKEN_TTL: Joi.string().default('3d'),
         REFRESH_TOKEN_TTL: Joi.string().default('14d'),
         PASSWORD_RESET_TOKEN_TTL: Joi.string().default('1h'),
         EMAIL_VERIFICATION_TOKEN_TTL: Joi.string().default('24h'),

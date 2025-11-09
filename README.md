@@ -7,7 +7,7 @@ Secure, production-ready REST backend for managing patients, medication plans, a
 - **Authentication & Sessions**
   - Patient self-signup with optional email verification
   - Admin-managed users & role changes
-  - JWT access (15m) + rotating refresh tokens (14d) with reuse detection
+  - JWT access (3d) + rotating refresh tokens (14d) with reuse detection
   - Password reset flows with email links and forced session revocation
 - **Clinical Records**
   - Patients manage their own medication records

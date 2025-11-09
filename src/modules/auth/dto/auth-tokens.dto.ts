@@ -16,7 +16,7 @@ export class AuthTokensDto {
 
   @ApiProperty({
     description: 'Access token expiration time in seconds',
-    example: 900,
+    example: 259200,
   })
   expiresIn!: number;
 
@@ -35,7 +35,7 @@ export class AuthResponseDto {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkNmMyYTBmMy1mM2I5LTRkN2QtYjhmZC02ZjFiMWM1ZDJkNGMiLCJpYXQiOjE3MzAwMDQwMDAsImV4cCI6MTczMDAwNzYwMH0.T2ZKfT1mP4U1uo3tY5GpM8P-1Dw3w0S2-MF08nTqVgk',
       refreshToken:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkNmMyYTBmMy1mM2I5LTRkN2QtYjhmZC02ZjFiMWM1ZDJkNGMiLCJzaWQiOiI5Y2RhNzY5NS0zNmMxLTRkNjEtYmYzNS04ZTVlM2JjNzhlYjgiLCJpYXQiOjE3MzAwMDQwMDAsImV4cCI6MTczMDYwODQwMH0.YJz9ncSC0iZM2rVv4J4Kp0gKXaj6LzBfx5cL3l8m7bw',
-      expiresIn: 900,
+      expiresIn: 259200,
       refreshExpiresIn: 1209600,
     },
   })

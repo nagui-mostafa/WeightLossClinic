@@ -97,7 +97,7 @@ export class SomeService {
 ### JWT Configuration
 - `JWT_ACCESS_SECRET`: Secret for access tokens (required)
 - `JWT_REFRESH_SECRET`: Secret for refresh tokens (required)
-- `ACCESS_TOKEN_TTL`: Access token expiration (default: 15m)
+- `ACCESS_TOKEN_TTL`: Access token expiration (default: 3d)
 - `REFRESH_TOKEN_TTL`: Refresh token expiration (default: 14d)
 - `PASSWORD_RESET_TOKEN_TTL`: Password reset token expiration (default: 1h)
 - `EMAIL_VERIFICATION_TOKEN_TTL`: Email verification token expiration (default: 24h)

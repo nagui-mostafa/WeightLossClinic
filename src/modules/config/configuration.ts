@@ -49,7 +49,7 @@ export default (): Configuration => ({
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET || '',
     refreshSecret: process.env.JWT_REFRESH_SECRET || '',
-    accessTokenTTL: process.env.ACCESS_TOKEN_TTL || '15m',
+    accessTokenTTL: process.env.ACCESS_TOKEN_TTL || '3d',
     refreshTokenTTL: process.env.REFRESH_TOKEN_TTL || '14d',
     passwordResetTokenTTL: process.env.PASSWORD_RESET_TOKEN_TTL || '1h',
     emailVerificationTokenTTL:

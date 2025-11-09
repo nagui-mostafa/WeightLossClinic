@@ -11,7 +11,7 @@ describe('ConfigModule', () => {
     process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
     process.env.JWT_ACCESS_SECRET = 'test-access-secret';
     process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
-    process.env.ACCESS_TOKEN_TTL = '15m';
+    process.env.ACCESS_TOKEN_TTL = '3d';
     process.env.REFRESH_TOKEN_TTL = '14d';
     process.env.PASSWORD_RESET_TOKEN_TTL = '1h';
     process.env.EMAIL_VERIFICATION_TOKEN_TTL = '24h';
@@ -91,7 +91,7 @@ describe('ConfigModule', () => {
       it('should load JWT TTL values with defaults', () => {
         const jwt = configService.get('jwt');
 
-        expect(jwt?.accessTokenTTL).toBe('15m');
+        expect(jwt?.accessTokenTTL).toBe('3d');
         expect(jwt?.refreshTokenTTL).toBe('14d');
         expect(jwt?.passwordResetTokenTTL).toBe('1h');
         expect(jwt?.emailVerificationTokenTTL).toBe('24h');
