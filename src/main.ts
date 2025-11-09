@@ -48,6 +48,7 @@ async function bootstrap() {
   // CORS
   const corsOrigins = configService.get<string>('CORS_ORIGINS')?.split(',') || [
     'http://localhost:3000',
+    'https://joeymed.com',
   ];
   app.enableCors({
     origin: corsOrigins,
