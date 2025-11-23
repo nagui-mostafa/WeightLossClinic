@@ -1,0 +1,549 @@
+# Weight Loss Clinic Backend – Deployment & Operations Runbook
+
+This document explains, in extreme detail, how the production backend is deployed
+on AWS using a single EC2 instance plus Amazon RDS PostgreSQL. It covers every
+command executed so far, the architecture, secrets management, seeding process,
+ongoing deployments, migrations, troubleshooting, and what to change when
+updating the `.env`. Anyone following this runbook should be able to recreate the
+entire environment or operate on top of the existing setup confidently.
+
+---
+## 1. Current Architecture Overview
+
+- **Region:** `us-east-1`
+- **Compute:** 1× EC2 instance (`t4g.small`) acting as the application host
+  - Instance ID: `i-0f9d8eab11737f436`
+  - Public IP: `54.80.242.78`
+  - Security Group: `sg-0e6bebd58a499e5f7`
+  - Software installed:
+    - Docker + docker-compose (manual binary) for running the NestJS container
+    - nginx acting as reverse proxy on port 80 (plain HTTP for now)
+    - AWS SSM agent (default) for remote commands without SSH
+  - Data/Config directory: `/opt/weightloss`
+    - `.env` file contains runtime env vars
+    - `docker-compose.yml` defines the container service
+    - `deploy.sh` automates pulling, optional migrations, and restart
+    - `tsconfig.json` (copied from repo) so Prisma seed tool can run inside
+    - Nginx configs in `/etc/nginx/nginx.conf` and `/etc/nginx/conf.d/weightloss.conf`
+- **Database:** Amazon RDS PostgreSQL
+  - Identifier: `weight-loss-db`
+  - Instance class: `db.t4g.micro`
+  - Endpoint: `weight-loss-db.cerwwea2qjz1.us-east-1.rds.amazonaws.com`
+  - DB name: `weightloss`
+  - Security Group: `sg-04b5eb936f15a7a07` (allows port 5432 only from EC2 SG)
+- **Secrets storage:** AWS Systems Manager Parameter Store (free tier)
+  - Path prefix: `/weightloss/prod/`
+  - Parameters created:
+    - `/weightloss/prod/DATABASE_URL`
+    - `/weightloss/prod/JWT_ACCESS_SECRET`
+    - `/weightloss/prod/JWT_REFRESH_SECRET`
+    - `/weightloss/prod/MAIL_FROM`
+    - `/weightloss/prod/MAIL_PASS`
+    - `/weightloss/prod/MAIL_USER`
+    - `/weightloss/prod/SEED_ADMIN_PASSWORD`
+  - Each parameter is a SecureString (encrypted). Currently the EC2 host uses
+    plain `.env`; future improvement is to load values from Parameter Store at
+    deployment time so secrets aren’t stored in plain text on disk.
+- **Logging:**
+  - Application logs (piped from Docker) go to CloudWatch Logs `/weightloss/api`
+  - nginx logs stay local (`/var/log/nginx`); optional to ship via CloudWatch agent
+- **Cost profile:** ≈ $45/mo (EC2 + RDS + logs). No NAT, ALB, or App Runner charges.
+
+---
+## 2. One-Time Provisioning Commands (already executed)
+
+> These commands were run from the local machine, using AWS CLI with admin
+> credentials. They generally don’t need to be rerun unless rebuilding from scratch.
+
+### 2.1 RDS security tightening
+```
+aws ec2 revoke-security-group-ingress \
+  --group-id sg-04b5eb936f15a7a07 \
+  --protocol tcp --port 5432 --cidr 0.0.0.0/0 \
+  --region us-east-1
+```
+
+### 2.2 Create EC2 security group (`weight-loss-ec2-sg`)
+```
+aws ec2 create-security-group \
+  --group-name weight-loss-ec2-sg \
+  --description "EC2 host for Weight Loss Clinic API" \
+  --vpc-id vpc-0bda468753deca613 --region us-east-1
+```
+Add ingress rules (currently open to everyone; narrow to office IP ASAP):
+```
+# SSH (tighten to trusted IPs!)
+aws ec2 authorize-security-group-ingress --group-id sg-0e6b... --protocol tcp --port 22 --cidr 0.0.0.0/0 --region us-east-1
+
+# HTTP
+aws ec2 authorize-security-group-ingress --group-id sg-0e6b... --protocol tcp --port 80 --cidr 0.0.0.0/0 --region us-east-1
+
+# HTTPS (future use)
+aws ec2 authorize-security-group-ingress --group-id sg-0e6b... --protocol tcp --port 443 --cidr 0.0.0.0/0 --region us-east-1
+```
+
+### 2.3 Allow EC2 SG to reach RDS
+```
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-04b5eb936f15a7a07 \
+  --protocol tcp --port 5432 \
+  --source-group sg-0e6bebd58a499e5f7 \
+  --region us-east-1
+```
+
+### 2.4 Create SSH key (saved locally)
+```
+aws ec2 create-key-pair --key-name weight-loss-key \
+  --query 'KeyMaterial' --output text --region us-east-1 > weight-loss-key.pem
+chmod 400 weight-loss-key.pem
+```
+
+### 2.5 Launch EC2 instance
+1. Get latest ARM AMI: `aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64 …`
+2. Run instance (user data installs docker & compose):
+```
+aws ec2 run-instances \
+  --image-id ami-0dda28e5df2d25176 \
+  --instance-type t4g.small \
+  --key-name weight-loss-key \
+  --subnet-id subnet-0b427d557b3717d2c \
+  --security-group-ids sg-0e6bebd58a499e5f7 \
+  --user-data file://bootstrap.sh \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=weight-loss-api}]' \
+  --region us-east-1
+```
+`bootstrap.sh` installed docker, docker-compose, git, CloudWatch agent.
+
+### 2.6 Attach IAM role for SSM/ECR/logging
+```
+aws iam create-role --role-name WeightLossEC2SSMRole --assume-role-policy-document file://trust.json
+aws iam attach-role-policy --role-name WeightLossEC2SSMRole --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+aws iam attach-role-policy --role-name WeightLossEC2SSMRole --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+aws iam attach-role-policy --role-name WeightLossEC2SSMRole --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+aws iam create-instance-profile --instance-profile-name WeightLossEC2SSMProfile
+aws iam add-role-to-instance-profile --instance-profile-name WeightLossEC2SSMProfile --role-name WeightLossEC2SSMRole
+aws ec2 associate-iam-instance-profile --instance-id i-0f9d8eab11737f436 --iam-instance-profile Name=WeightLossEC2SSMProfile
+```
+(Instance rebooted once to ensure SSM agent recognized the new profile.)
+
+### 2.7 Auto-recovery alarm (free)
+```
+aws cloudwatch put-metric-alarm \
+  --region us-east-1 \
+  --alarm-name recover-i-0f9d8eab11737f436 \
+  --metric-name StatusCheckFailed_System \
+  --namespace AWS/EC2 \
+  --statistic Minimum --period 60 --evaluation-periods 2 \
+  --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold \
+  --dimensions Name=InstanceId,Value=i-0f9d8eab11737f436 \
+  --alarm-actions arn:aws:automate:us-east-1:ec2:recover
+```
+
+### 2.8 Install nginx + certbot
+```
+aws ssm send-command ... --parameters commands='["sudo dnf install -y nginx certbot python3-certbot-nginx", "sudo systemctl enable nginx"]'
+```
+Nginx config (current) lives in `/etc/nginx/conf.d/weightloss.conf`. Reverse proxies to 127.0.0.1:3000, exposes `/healthz`, and acts as default server on port 80. Main `/etc/nginx/nginx.conf` was simplified to only `include /etc/nginx/conf.d/*.conf;`.
+
+### 2.9 Create CloudWatch Log group
+```
+aws logs create-log-group --log-group-name /weightloss/api --region us-east-1
+```
+Docker uses this log group via `awslogs` driver.
+
+### 2.10 Delete unused App Runner secret
+```
+aws secretsmanager delete-secret --secret-id weight-loss-env --force-delete-without-recovery --region us-east-1
+```
+
+---
+## 3. EC2 Host File Layout & Services
+
+```
+/opt/weightloss
+├── .env                # Prod env vars (currently plain text; plan to load from SSM)
+├── docker-compose.yml  # Single service mapping port 3000
+├── deploy.sh           # Automates pull + optional migrate + restart
+├── tsconfig.json       # Needed so `npm run db:seed` works inside container
+└── (future) scripts, backups, etc.
+```
+
+### docker-compose.yml (current)
+```
+services:
+  api:
+    image: 851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest
+    env_file:
+      - /opt/weightloss/.env
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /weightloss/api
+        awslogs-region: us-east-1
+        awslogs-stream: ec2
+```
+
+### deploy.sh (usage: `sudo /opt/weightloss/deploy.sh [migrate]`)
+```
+#!/bin/bash
+set -euo pipefail
+
+REGION="us-east-1"
+ECR_IMAGE="851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest"
+COMPOSE="/usr/local/bin/docker-compose"
+ENV_FILE="/opt/weightloss/.env"
+
+aws ecr get-login-password --region "$REGION" | sudo docker login --username AWS --password-stdin "${ECR_IMAGE%:*}"
+
+sudo "$COMPOSE" pull
+
+if [[ "${1:-}" == "migrate" ]]; then
+  sudo docker run --rm --env-file "$ENV_FILE" "$ECR_IMAGE" npx prisma migrate deploy
+fi
+
+sudo "$COMPOSE" up -d
+sudo docker image prune -f >/dev/null 2>&1
+```
+
+### nginx reverse proxy
+`/etc/nginx/conf.d/weightloss.conf`:
+```
+server {
+    listen 80 default_server;
+    server_name weightloss weightloss.local 54.80.242.78 localhost;
+    client_max_body_size 25m;
+
+    location /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 'ok';
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+```
+To add HTTPS later, install certbot and run `sudo certbot --nginx -d yourdomain.com`. At present the site is HTTP-only.
+
+---
+## 4. Environment Variables & Secrets
+
+### 4.1 Current `.env`
+```
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=postgresql://weightloss_admin:TempPass123!@weight-loss-db.cerwwea2qjz1.us-east-1.rds.amazonaws.com:5432/weightloss?sslmode=require
+JWT_ACCESS_SECRET=your-access-secret-key-change-in-production
+JWT_REFRESH_SECRET=your-refresh-secret-key-change-in-production
+ACCESS_TOKEN_TTL=3d
+REFRESH_TOKEN_TTL=14d
+PASSWORD_RESET_TOKEN_TTL=15m
+EMAIL_VERIFICATION_TOKEN_TTL=24h
+EMAIL_VERIFICATION_ENABLED=true
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=nagui.mostafa@gmail.com
+MAIL_PASS=mlpkuqnyiufnkbgj
+MAIL_FROM=nagui.mostafa@gmail.com
+CORS_ORIGINS=http://13.c60.236.195:3000,http://localhost:3000,https://joeymed.com,http://localhost:5173,https://www.joeymed.com,https://app.joeymed.com
+CLIENT_APP_URL=https://joeymed.com
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX=100
+LOG_LEVEL=info
+PROM_ENABLED=true
+SEED_ADMIN_EMAIL=admin@weightlossclinic.com
+SEED_ADMIN_PASSWORD=ChangeMeNow!123
+```
+**Action items:**
+- Rotate DB password, JWT secrets, mail password. Update `.env` + Parameter Store simultaneously.
+- Consider storing `.env` exclusively in Parameter Store and fetching it during deployment to avoid secrets on disk.
+
+### 4.1.1 PEM Key / SSH Access
+- File: `weight-loss-key.pem`
+- Location: stored on the operator's workstation (this repo root when created).
+- Permissions: `chmod 400 weight-loss-key.pem` (already applied).
+- Usage: `ssh -i weight-loss-key.pem ec2-user@54.80.242.78`
+- Recommendation: keep the PEM in a secure password manager or secrets vault. If lost, you must create a new key pair and replace it on the EC2 instance.
+
+### 4.2 Updating `.env` safely
+1. Edit `/opt/weightloss/.env` (via SSM `aws ssm send-command ... "cat <<'EOF' > /opt/weightloss/.env" ...`).
+2. Restart container: `sudo /opt/weightloss/deploy.sh` (no migrate) or `sudo docker-compose up -d`.
+3. If the change is sensitive (password/JWT), also update Parameter Store so future deployments can read from there.
+
+### 4.3 Parameter Store entries (for reference)
+```
+aws ssm describe-parameters --parameter-filters Key=Path,Option=Recursive,Values=/weightloss/prod --region us-east-1
+```
+Each entry can be retrieved via `aws ssm get-parameter --with-decryption` or in automation.
+
+---
+## 5. Seeding & Data Reset
+
+**Command used to seed current production DB (already executed):**
+```
+sudo docker run --rm \
+  --env-file /opt/weightloss/.env \
+  -v /opt/weightloss/tsconfig.json:/app/tsconfig.json \
+  851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest \
+  npm run db:seed
+```
+This resets the database, so **run it only on fresh instances** (never on a live DB with real users). Output provided admin + patient demo credentials.
+
+For staging or future resets, copy `tsconfig.json` from repo if missing. Without the volume mount, `ts-node` complains about unknown `.ts` extension.
+
+---
+## 6. Future Deployments (code changes)
+
+1. **Develop & test locally.** Commit code + Prisma migrations.
+2. **Build & push image** (from local machine with AWS CLI creds):
+   ```
+   docker build -t weight-loss-clinic-api .
+   docker tag weight-loss-clinic-api:latest 851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest
+   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 851725402279.dkr.ecr.us-east-1.amazonaws.com
+   docker push 851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest
+   ```
+3. **Deploy on EC2**
+   - Remote in via SSM: `aws ssm start-session --target i-0f9d8eab11737f436`
+   - Run deployment script (include `migrate` if schema changed):
+     - Without migrations: `sudo /opt/weightloss/deploy.sh`
+     - With migrations: `sudo /opt/weightloss/deploy.sh migrate`
+       - Script does: ECR login → `docker-compose pull` → (optional) `npx prisma migrate deploy` inside container → `docker-compose up -d` → prune old images.
+4. **Verify**
+   - `curl http://localhost/v1/ready` (via SSM) or `curl http://54.80.242.78/v1/ready`
+   - Check CloudWatch log group `/weightloss/api` or stream logs locally (`sudo docker logs -f weightloss-api-1`).
+
+**Rollback:**
+- If new image is broken, rerun `docker-compose up -d` with a pinned previous tag. Keep older image tags in ECR for safety.
+
+---
+## 7. Database Migrations (with live data)
+
+Whenever schema changes:
+1. Develop migration locally (`npx prisma migrate dev --name ...`). Commit migration SQL.
+2. Deploy new image.
+3. On EC2, run `npx prisma migrate deploy` (script supports this via `deploy.sh migrate`).
+   - Do **not** run `prisma migrate reset`; it wipes data.
+4. Verify with `prisma migrate status` (optional) or by checking new tables/columns.
+5. If migration fails, fix SQL and redeploy; do not continue running the old app against partially migrated schema.
+
+**Backups:** RDS already takes daily automated backups (1-day retention). Increase retention to 7–14 days: `aws rds modify-db-instance --db-instance-identifier weight-loss-db --backup-retention-period 7 --apply-immediately`.
+
+---
+## 8. Accessing the Database
+
+For WebStorm or psql, use:
+- Host: `weight-loss-db.cerwwea2qjz1.us-east-1.rds.amazonaws.com`
+- Port: `5432`
+- Database: `weightloss`
+- User: `weightloss_admin`
+- Password: `TempPass123!` (change soon!)
+- SSL mode: `require`
+
+Example psql command:
+```
+psql "postgresql://weightloss_admin:TempPass123!@weight-loss-db.cerwwea2qjz1.us-east-1.rds.amazonaws.com:5432/weightloss?sslmode=require"
+```
+
+### 8.1 Secure local access via SSM tunnel
+- Install the AWS Session Manager plugin.
+- Start a port forward (keep the terminal open while connected):
+  ```
+  aws ssm start-session \
+    --target i-0f9d8eab11737f436 \
+    --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters '{"host":["weight-loss-db.cerwwea2qjz1.us-east-1.rds.amazonaws.com"],"portNumber":["5432"],"localPortNumber":["5433"]}'
+  ```
+- In WebStorm or psql, point to `localhost:5433` (SSL disabled):
+  ```
+  psql "postgresql://weightloss_admin:<password>@localhost:5433/weightloss"
+  ```
+- Hit Ctrl+C to close the tunnel when done. This avoids opening security-group rules for each developer IP.
+
+---
+## 9. HTTP/HTTPS & DNS
+
+Currently the API is accessible at both `http://54.80.242.78` and the HTTPS endpoint `https://api.joeymed.com`.
+
+Steps already performed (no cost):
+1. **DNS** – Added Route 53 record `api.joeymed.com` → `54.80.242.78`:
+   ```
+   aws route53 change-resource-record-sets --hosted-zone-id Z0723136258GJLMYWMAPS --change-batch '{
+     "Changes": [{
+       "Action": "UPSERT",
+       "ResourceRecordSet": {
+         "Name": "api.joeymed.com.",
+         "Type": "A",
+         "TTL": 60,
+         "ResourceRecords": [{"Value": "54.80.242.78"}]
+       }
+     }]
+   }'
+   ```
+2. **Let’s Encrypt certificate via Certbot (free)**
+   ```
+   sudo certbot --nginx -d api.joeymed.com --non-interactive --agree-tos -m nagui.mostafa@gmail.com
+   ```
+   - Cert files: `/etc/letsencrypt/live/api.joeymed.com/`
+   - nginx config automatically updated by Certbot to force HTTPS.
+   - Auto-renewal cron/systemd timer is in place.
+
+Now the canonical API base URL is **`https://api.joeymed.com`**. HTTP on `54.80.242.78` still works but browsers should use HTTPS.
+
+If you ever rebuild:
+1. Recreate the A record for the new EC2 IP.
+2. Re-run the certbot command.
+3. Certs renew automatically every ~60 days; verify with `sudo certbot renew --dry-run`.
+
+If you later prefer an Application Load Balancer (for zero-downtime deploys), you can move nginx behind ALB and share the load balancer across services. That adds ~$20/mo.
+
+### 9.1 Frontend (AWS Amplify Next.js) Integration
+- Current Amplify site: `https://joeymed.com/`
+- Backend HTTPS URL: `https://api.joeymed.com`
+- Frontend environment/config should point to that base (e.g., `NEXT_PUBLIC_API_URL=https://api.joeymed.com`). No more mixed-content warnings because both sides use HTTPS.
+- CORS already allows `https://joeymed.com` and `https://app.joeymed.com`. If you add more domains, append them to `CORS_ORIGINS` in `.env` and redeploy.
+- If Amplify needs WebSocket/SSE, ensure nginx proxies those paths as well (currently everything under `/` is proxied to NestJS).
+
+---
+## 10. SSH Hardening
+
+Right now port 22 on `sg-0e6bebd58a499e5f7` is open to the world. Recommended change:
+```
+aws ec2 revoke-security-group-ingress --group-id sg-0e6bebd58a499e5f7 --protocol tcp --port 22 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-id sg-0e6bebd58a499e5f7 --protocol tcp --port 22 --cidr <YOUR_STATIC_IP>/32 --region us-east-1
+```
+Or remove SSH entirely and use Session Manager for interactive shells.
+
+---
+## 11. Troubleshooting Cheat Sheet
+
+- **SSH/HTTP inaccessible:** Check EC2 SG rules, confirm instance is `running`, and verify nginx/dcoker service status via SSM: `sudo systemctl status nginx`, `sudo docker ps`.
+- **503 or no response at /v1/ready:** ensure container is running (`docker ps`), check CloudWatch logs for errors, verify RDS reachable.
+- **Seed script errors:** mount tsconfig (`-v /opt/weightloss/tsconfig.json:/app/tsconfig.json`), ensure `.env` has correct DB credentials.
+- **Prisma migrate fails:** inspect `/opt/weightloss/prisma/migrations/*` inside container. Use `npx prisma migrate resolve --rolled-back ...` if needed, but proceed carefully.
+- **Log stream permission errors:** ensure EC2 IAM role has `CloudWatchLogsFullAccess` (already attached).
+- **Out of disk:** prune unused images (`sudo docker image prune -af`), consider increasing root EBS volume (default 8 GB).
+
+---
+## 12. Rebuilding Everything from Scratch (Disaster Recovery)
+
+1. Terminate EC2 instance (optional if unusable).
+2. Re-run sections 2.1–2.10 to recreate SGs, key pair, instance, IAM role, nginx, etc.
+3. Attach the ECR repo + Parameter Store values remain in AWS; no need to re-create unless intentionally deleted.
+4. Deploy code (`docker-compose pull && up -d`).
+5. Run `deploy.sh migrate` followed by `deploy.sh` to ensure schema is current.
+6. *Only if needed* run the seed command (this wipes DB!).
+7. Reconfigure DNS/TLS if IP changed.
+
+---
+## 13. Outstanding TODOs / Future Enhancements
+
+- Restrict SSH to static IP or remove entirely; rely on SSM.
+- Switch secrets loading to Parameter Store (e.g., using AWS CLI or ssm-agent inside `deploy.sh`).
+- Enable HTTPS via Let’s Encrypt + nginx or ACM + ALB.
+- Increase RDS backup retention and enable Performance Insights.
+- Add CloudWatch alarms for high CPU, low disk, HTTP 5xx, etc.
+- Consider Infrastructure-as-Code (Terraform or CDK) to recreate the stack automatically.
+
+---
+## 14. Quick Reference: Common Commands
+
+**Start a shell on EC2 via Session Manager**
+```
+aws ssm start-session --target i-0f9d8eab11737f436 --region us-east-1
+```
+
+**Deploy latest image**
+```
+sudo /opt/weightloss/deploy.sh          # without DB schema changes
+sudo /opt/weightloss/deploy.sh migrate  # with Prisma migrations
+```
+
+**Check app health**
+```
+curl -s http://localhost/v1/ready
+curl -s http://localhost/healthz   # nginx health endpoint
+```
+
+**Tail container logs**
+```
+sudo docker logs -f weightloss-api-1
+```
+(or view CloudWatch Logs `/weightloss/api`)
+
+**Run DB seed (destroys existing data!)**
+```
+sudo docker run --rm --env-file /opt/weightloss/.env \
+  -v /opt/weightloss/tsconfig.json:/app/tsconfig.json \
+  851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest \
+  npm run db:seed
+```
+
+**Run migrations only**
+```
+sudo docker run --rm --env-file /opt/weightloss/.env \
+  851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest \
+  npx prisma migrate deploy
+```
+
+**Update `.env`** (example using here-doc)
+```
+aws ssm send-command \
+  --document-name AWS-RunShellScript \
+  --instance-ids i-0f9d8eab11737f436 \
+  --comment "Update env" \
+  --parameters commands='["cat <<\'EOF\' | sudo tee /opt/weightloss/.env >/dev/null","...new env contents...","EOF"]'
+```
+Then `sudo /opt/weightloss/deploy.sh` to apply.
+
+**Check RDS login (from local machine)**
+```
+psql "postgresql://weightloss_admin:<password>@weight-loss-db.cerwwea2qjz1.us-east-1.rds.amazonaws.com:5432/weightloss?sslmode=require"
+```
+
+---
+## 15. Credentials & Secrets to Rotate Soon
+- `weightloss_admin / TempPass123!` – change to a strong password; update `.env` & Parameter Store.
+- `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` – replace placeholder values.
+- Gmail app password `mlpkuqnyiufnkbgj` – rotate or switch to Amazon SES to avoid Gmail throttling.
+- Seed data credentials (admin/patient) are public; update in production once real users exist.
+
+---
+## 16. Summary Checklist for New Engineers
+1. Confirm EC2 instance `i-0f9d8eab11737f436` is running.
+2. Use SSM to access the server; avoid SSH.
+3. Keep `/opt/weightloss/.env` and Parameter Store in sync when secrets change.
+4. Use `/opt/weightloss/deploy.sh migrate` for schema updates; never run `prisma migrate reset` on prod.
+5. Use `docker run ... npm run db:seed` only on empty databases (staging/dev).
+6. Monitor CloudWatch log group `/weightloss/api` for errors.
+7. If rebuilding, follow sections 2–4 to recreate infrastructure.
+8. Plan to add HTTPS + SSH lockdown + SES as soon as possible.
+
+This runbook captures every command executed so far and should serve as the
+canonical reference for operating the Weight Loss Clinic backend on AWS.
+
+---
+## 17. Cost Analysis (Backend Only)
+
+| Resource | Approx Monthly Cost |
+| --- | --- |
+| EC2 t4g.small + 20 GB gp3 EBS | ~$17 |
+| RDS db.t4g.micro + 20 GB gp3 storage | ~$22 |
+| CloudWatch Logs & SSM (within free tier) | ~$5 |
+| **Total** | **~$44/mo** |
+
+Notes:
+- Costs exclude the Amplify frontend (billed separately) and any Route 53 zones or certificates.
+- Adding TLS via ACM + ALB would increase costs by ~$20/mo. A NAT Gateway would add ~$33/mo (not used).
+- CloudWatch costs stay low if log retention is managed (default indefinite). Set retention (e.g., 30 days) to cap storage fees.
+
+---

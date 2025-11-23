@@ -1,83 +1,14 @@
-version: '3.9'
-
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: wlc-postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: weight_loss_clinic
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  pgadmin:
-    image: dpage/pgadmin4:7.7
-    container_name: wlc-pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@clinic.local
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
-
-  pgbackups:
-    image: prodrigestivill/postgres-backup-local:15
-    container_name: wlc-postgres-backups
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_DB: weight_loss_clinic
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_BACKUP_SCHEDULE: "0 3 * * *"
-    volumes:
-      - ./backups:/backups
-    depends_on:
-      - postgres
-
-  mailhog:
-    image: mailhog/mailhog:v1.0.1
-    container_name: wlc-mailhog
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-
   api:
-    build: .
-    container_name: wlc-api
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/weight_loss_clinic?schema=public
-      JWT_ACCESS_SECRET: change-me-access
-      JWT_REFRESH_SECRET: change-me-refresh
-      ACCESS_TOKEN_TTL: 3d
-      REFRESH_TOKEN_TTL: 14d
-      PASSWORD_RESET_TOKEN_TTL: 15m
-      EMAIL_VERIFICATION_TOKEN_TTL: 24h
-      MAIL_HOST: mailhog
-      MAIL_PORT: 1025
-      MAIL_USER: ""
-      MAIL_PASS: ""
-      MAIL_FROM: noreply@weightlossclinic.com
-      CORS_ORIGINS: http://localhost:3000,http://localhost:4200
+    image: 851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest
+    env_file:
+      - /opt/weightloss/.env
     ports:
       - "3000:3000"
-    command: ["node", "dist/main"]
-    volumes:
-      - ./prisma:/app/prisma:ro
-      - ./docs:/app/docs:ro
-
-volumes:
-  postgres_data:
+    restart: unless-stopped
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /weightloss/api
+        awslogs-region: us-east-1
+        awslogs-stream: ec2
