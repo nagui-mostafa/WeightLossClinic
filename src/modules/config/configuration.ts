@@ -38,6 +38,17 @@ export interface Configuration {
   observability: {
     promEnabled: boolean;
   };
+  objectStorage: {
+    driver: 'minio' | 's3';
+    endpoint?: string;
+    region?: string;
+    bucket: string;
+    accessKey: string;
+    secretKey: string;
+    forcePathStyle: boolean;
+    useSSL: boolean;
+    publicBaseUrl?: string;
+  };
 }
 
 export default (): Configuration => ({
@@ -83,5 +94,18 @@ export default (): Configuration => ({
   },
   observability: {
     promEnabled: process.env.PROM_ENABLED !== 'false',
+  },
+  objectStorage: {
+    driver:
+      (process.env.OBJECT_STORAGE_DRIVER as 'minio' | 's3') || 'minio',
+    endpoint: process.env.OBJECT_STORAGE_ENDPOINT || 'http://localhost:9000',
+    region: process.env.OBJECT_STORAGE_REGION || 'us-east-1',
+    bucket: process.env.OBJECT_STORAGE_BUCKET || 'weight-loss-media',
+    accessKey: process.env.OBJECT_STORAGE_ACCESS_KEY || '',
+    secretKey: process.env.OBJECT_STORAGE_SECRET_KEY || '',
+    forcePathStyle: process.env.OBJECT_STORAGE_FORCE_PATH_STYLE !== 'false',
+    useSSL: process.env.OBJECT_STORAGE_USE_SSL === 'true',
+    publicBaseUrl:
+      process.env.OBJECT_STORAGE_PUBLIC_BASE_URL?.trim() || undefined,
   },
 });

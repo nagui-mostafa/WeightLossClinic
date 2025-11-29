@@ -3,8 +3,10 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { JsonBodyParserPipe } from './modules/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -22,6 +24,18 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
 
   const configService = app.get(ConfigService);
+  const objectStorageEndpoint =
+    configService.get<string>('OBJECT_STORAGE_ENDPOINT') ||
+    'http://127.0.0.1:9100';
+
+  app.use(
+    '/minio',
+    createProxyMiddleware({
+      target: objectStorageEndpoint,
+      changeOrigin: true,
+      pathRewrite: { '^/minio': '' },
+    }),
+  );
 
   app.use(
     helmet({
@@ -57,6 +71,7 @@ async function bootstrap() {
 
   // Global validation pipe
   app.useGlobalPipes(
+    new JsonBodyParserPipe(),
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
@@ -96,6 +111,7 @@ async function bootstrap() {
     .addTag('records', 'Medication records')
     .addTag('admin', 'Admin operations')
     .addTag('health', 'Health & monitoring')
+    .addTag('weight-loss-products', 'Weight loss product catalog')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

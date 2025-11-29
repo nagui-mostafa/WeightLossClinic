@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import {
   ActivityKind,
   MedicationType,
+  Prisma,
   PrismaClient,
   Role,
 } from '@prisma/client';
@@ -65,6 +66,65 @@ type BlogSeed = {
   imgSrc: string;
   body: BlogSectionSeed[];
 };
+
+type ProductPlanSeed = {
+  id: string;
+  title: string;
+  price: number;
+  oldPrice?: number;
+  href: string;
+};
+
+type ProductFaqSeed = {
+  title: string;
+  description: string;
+};
+
+type ProductWhyChooseSeed = {
+  title: string;
+  excerpt: string;
+  imgSrc: string;
+};
+
+type ProductHowItWorksSeed = {
+  step: number;
+  title: string;
+  description: string;
+};
+
+type ProductImageSeed = {
+  id: string;
+  bucket?: string;
+  objectKey: string;
+  altText?: string;
+  fallbackUrl?: string;
+  variant?: string;
+};
+
+type WeightLossProductSeed = {
+  token: string;
+  href: string;
+  hrefForm?: string;
+  name: string;
+  oldPrice?: number;
+  price: number;
+  popular?: boolean;
+  inStock?: boolean;
+  badge?: string;
+  description?: string;
+  features?: string[];
+  shipping?: string;
+  instructions?: string;
+  sideEffects?: string;
+  whyChoose?: ProductWhyChooseSeed[];
+  plan?: ProductPlanSeed[];
+  question?: ProductFaqSeed[];
+  howItWorks?: ProductHowItWorksSeed[];
+  images?: ProductImageSeed[];
+  metadata?: Record<string, unknown>;
+};
+
+type ProductSeedPayload = Omit<Prisma.WeightLossProductCreateInput, 'token'>;
 
 type PatientSeed = {
   profile: {
@@ -1073,6 +1133,368 @@ const blogSeeds: BlogSeed[] = [
   },
 ];
 
+const weightLossProductSeeds: WeightLossProductSeed[] = [
+  {
+    token: 'glp1-core-plan',
+    href: '/weight-loss/glp1-core-plan',
+    hrefForm: 'wLinkForm',
+    name: 'GLP-1 Core — Injection',
+    oldPrice: 279,
+    price: 199,
+    popular: true,
+    inStock: true,
+    badge: 'Clinician-guided GLP-1 program (Semuglatide)',
+    description:
+      'A GLP-1 core plan (Semuglatide) designed to support steady weight loss, appetite control, and metabolic balance with weekly injections.',
+    features: [
+      'GLP-1 support with weekly dosing',
+      'Focus on appetite and satiety',
+      'Provider-guided titration schedule',
+    ],
+    shipping: 'Ships in 1–2 days — Free delivery over $40',
+    instructions:
+      'Inject once weekly as directed by your provider. Follow the titration schedule and do not exceed the prescribed dose.',
+    sideEffects:
+      'Possible nausea, GI upset, or headache. Effects are usually mild and temporary. Contact your provider if severe.',
+    whyChoose: [
+      {
+        title: 'Clinician-guided',
+        excerpt: 'Structured plan with check-ins',
+        imgSrc: '/images/weight-loss/products/1.jpg',
+      },
+      {
+        title: 'Appetite control',
+        excerpt: 'Helps reduce cravings',
+        imgSrc: '/images/weight-loss/products/2.jpg',
+      },
+      {
+        title: 'Steady progress',
+        excerpt: 'Built for sustainable loss',
+        imgSrc: '/images/weight-loss/products/3.jpg',
+      },
+    ],
+    plan: [
+      {
+        id: '1',
+        title: '4 Week',
+        price: 199,
+        oldPrice: 279,
+        href: 'https://pay.joeymed.com/b/fZueV6cY7eXLfJee337wA0n',
+      },
+      {
+        id: '2',
+        title: '8 Weeks',
+        price: 299,
+        oldPrice: 440,
+        href: 'https://pay.joeymed.com/b/dRmeV68HRcPDbsY0cd7wA0t',
+      },
+      {
+        id: '3',
+        title: '12 Week Elite',
+        price: 399,
+        oldPrice: 599,
+        href: 'https://pay.joeymed.com/b/9B69AM5vFcPD0Ok9MN7wA0u',
+      },
+    ],
+    question: [
+      {
+        title: 'What is this plan?',
+        description:
+          'A weekly GLP-1 program designed to support steady weight loss with provider oversight and lifestyle guidance.',
+      },
+      {
+        title: 'How do I use it?',
+        description:
+          'Inject once per week as instructed. Stay consistent with your dosing day and follow your nutrition plan.',
+      },
+      {
+        title: 'Side effects?',
+        description:
+          'Mild nausea or GI upset can occur and often fades. Seek help if symptoms are severe or persistent.',
+      },
+    ],
+    howItWorks: [
+      {
+        step: 1,
+        title: 'Start weekly dosing',
+        description:
+          'Begin with a starter dose and follow your titration plan.',
+      },
+      {
+        step: 2,
+        title: 'Support habits',
+        description: 'Pair with nutrition, hydration, and daily movement.',
+      },
+      {
+        step: 3,
+        title: 'Track results',
+        description:
+          'Review progress with your provider and adjust as needed.',
+      },
+    ],
+    images: [
+      {
+        id: 'glp1-core-plan-hero',
+        bucket: 'weight-loss-media',
+        objectKey: 'weight-loss/products/glp1-core/hero.png',
+        altText: 'GLP-1 Core hero art',
+        fallbackUrl: '/images/weight-loss/products/GLP-1 Core.png',
+        variant: 'hero',
+      },
+      {
+        id: 'glp1-core-plan-alt-1',
+        bucket: 'weight-loss-media',
+        objectKey: 'weight-loss/products/glp1-core/detail-1.png',
+        altText: 'GLP-1 Core detail 1',
+        fallbackUrl: '/images/weight-loss/products/GLP-1 Core.png',
+        variant: 'detail',
+      },
+      {
+        id: 'glp1-core-plan-alt-2',
+        bucket: 'weight-loss-media',
+        objectKey: 'weight-loss/products/glp1-core/detail-2.png',
+        altText: 'GLP-1 Core detail 2',
+        fallbackUrl: '/images/weight-loss/products/GLP-1 Core.png',
+        variant: 'detail',
+      },
+    ],
+    metadata: {
+      category: 'glp-1',
+      displayOrder: 1,
+    },
+  },
+  {
+    token: 'glp1-plus-core-plan',
+    href: '/weight-loss/glp1-plus-core-plan',
+    hrefForm: 'wLinkForm',
+    name: 'GLP-1 Plus Core — Injection',
+    oldPrice: 399,
+    price: 279,
+    popular: false,
+    inStock: true,
+    badge: 'Enhanced guidance & follow-ups (Tirzepatide)',
+    description:
+      'An enhanced GLP-1 (Tirzepatide) plan with weekly injections, added provider follow-ups, and lifestyle coaching support for stronger adherence.',
+    features: [
+      'Weekly GLP-1 injections',
+      'Extra provider follow-ups',
+      'Lifestyle & adherence support',
+    ],
+    shipping: 'Ships in 1–2 days — Free delivery over $40',
+    instructions:
+      'Inject weekly on a consistent day. Attend scheduled check-ins and follow your titration & nutrition plan.',
+    sideEffects:
+      'Potential nausea, stomach upset, or headache. Typically transient; contact your provider if persistent or severe.',
+    whyChoose: [
+      {
+        title: 'More support',
+        excerpt: 'Added check-ins for accountability',
+        imgSrc: '/images/weight-loss/products/1.jpg',
+      },
+      {
+        title: 'Personalized tweaks',
+        excerpt: 'Dosing adjusted to your response',
+        imgSrc: '/images/weight-loss/products/2.jpg',
+      },
+      {
+        title: 'Clear roadmap',
+        excerpt: 'Structured plan to stay on track',
+        imgSrc: '/images/weight-loss/products/3.jpg',
+      },
+    ],
+    plan: [
+      {
+        id: '5',
+        title: '4 Weeks',
+        price: 279,
+        oldPrice: 379,
+        href: 'https://pay.joeymed.com/b/eVq6oA9LVeXL68E1gh7wA0p',
+      },
+      {
+        id: '6',
+        title: '8 Weeks',
+        price: 399,
+        oldPrice: 458,
+        href: 'https://pay.joeymed.com/b/aFa6oA6zJ8zn2Ws4st7wA0v',
+      },
+      {
+        id: '7',
+        title: '12 Week Elite',
+        price: 499,
+        oldPrice: 589,
+        href: 'https://pay.joeymed.com/b/aFacMYbU36rf68E5wx7wA0A',
+      },
+    ],
+    question: [
+      {
+        title: 'What’s different vs Core?',
+        description:
+          'You’ll receive more frequent provider follow-ups and added coaching support to help maintain momentum.',
+      },
+      {
+        title: 'How do I get started?',
+        description:
+          'Complete your intake, get approved, and begin weekly injections with an adherence plan and check-ins.',
+      },
+      {
+        title: 'Any diet rules?',
+        description:
+          'Focus on protein, hydration, and fiber-rich foods. Your provider may share a simple weekly nutrition target.',
+      },
+    ],
+    howItWorks: [
+      {
+        step: 1,
+        title: 'Intake & approval',
+        description: 'Complete intake and provider review.',
+      },
+      {
+        step: 2,
+        title: 'Weekly dosing',
+        description: 'Follow your injection + titration schedule.',
+      },
+      {
+        step: 3,
+        title: 'Check-ins',
+        description: 'Use follow-ups to fine-tune and stay consistent.',
+      },
+    ],
+    images: [
+      {
+        id: 'glp1-plus-core-hero',
+        bucket: 'weight-loss-media',
+        objectKey: 'weight-loss/products/glp1-plus-core/hero.png',
+        altText: 'GLP-1 Plus Core hero art',
+        fallbackUrl: '/images/weight-loss/products/GLP-1 Plus Core.png',
+        variant: 'hero',
+      },
+      {
+        id: 'glp1-plus-core-alt-1',
+        bucket: 'weight-loss-media',
+        objectKey: 'weight-loss/products/glp1-plus-core/detail-1.png',
+        altText: 'GLP-1 Plus Core detail 1',
+        fallbackUrl: '/images/weight-loss/products/GLP-1 Plus Core.png',
+        variant: 'detail',
+      },
+    ],
+    metadata: {
+      category: 'glp-1',
+      displayOrder: 2,
+    },
+  },
+  {
+    token: 'lipo-mic-ultraburn',
+    href: '/weight-loss/lipo-mic-ultraburn',
+    hrefForm: 'wLinkForm',
+    name: 'Lipo MIC UltraBurn — Injection',
+    oldPrice: 199,
+    price: 89,
+    popular: false,
+    inStock: true,
+    badge: 'Metabolism & energy support',
+    description:
+      'A Lipo MIC blend to support fat metabolism and energy alongside your nutrition and movement plan, This is a Lipo MIC.',
+    features: [
+      'Lipo MIC (lipotropics) blend',
+      'Supports fat metabolism & energy',
+      'Provider-guided schedule',
+    ],
+    shipping: 'Ships in 1–2 days — Free delivery over $40',
+    instructions:
+      'Use as directed by your provider. Follow the recommended schedule and pair with diet and activity guidance.',
+    sideEffects:
+      'Generally well-tolerated; mild injection-site discomfort possible. Contact your provider if you experience unusual symptoms.',
+    whyChoose: [
+      {
+        title: 'Metabolic nudge',
+        excerpt: 'Designed to complement weight efforts',
+        imgSrc: '/images/weight-loss/products/1.jpg',
+      },
+      {
+        title: 'Convenient cadence',
+        excerpt: 'Simple provider-guided schedule',
+        imgSrc: '/images/weight-loss/products/2.jpg',
+      },
+      {
+        title: 'Pairs with GLP-1',
+        excerpt: 'Use alongside diet & movement',
+        imgSrc: '/images/weight-loss/products/3.jpg',
+      },
+    ],
+    plan: [
+      {
+        id: '5',
+        title: '4 Weeks',
+        price: 60,
+        oldPrice: 120,
+        href: 'https://pay.joeymed.com/b/4gM7sEaPZg1P40waQR7wA0w',
+      },
+      {
+        id: '6',
+        title: '8 Weeks',
+        price: 100,
+        oldPrice: 160,
+        href: 'https://pay.joeymed.com/b/28E28kf6fbLz68Egbb7wA0x',
+      },
+      {
+        id: '7',
+        title: '12 Week Elite',
+        price: 120,
+        oldPrice: 200,
+        href: 'https://pay.joeymed.com/b/00w5kw3nxcPD9kQ1gh7wA0y',
+      },
+    ],
+    question: [
+      {
+        title: 'What is Lipo MIC?',
+        description:
+          'A combination of lipotropic compounds used to support fat metabolism and energy as part of a broader plan.',
+      },
+      {
+        title: 'How is it used?',
+        description:
+          'Administer on the schedule provided by your clinician. Keep consistent nutrition, hydration, and activity.',
+      },
+      {
+        title: 'Can I combine with GLP-1?',
+        description:
+          'Often used alongside lifestyle and other therapies. Always follow your provider’s guidance.',
+      },
+    ],
+    howItWorks: [
+      {
+        step: 1,
+        title: 'Provider plan',
+        description: 'Confirm your dosing cadence and goals.',
+      },
+      {
+        step: 2,
+        title: 'Stay consistent',
+        description: 'Follow the schedule and log how you feel.',
+      },
+      {
+        step: 3,
+        title: 'Review & adjust',
+        description: 'Share progress; your plan can be refined.',
+      },
+    ],
+    images: [
+      {
+        id: 'lipo-ultraburn-hero',
+        bucket: 'weight-loss-media',
+        objectKey: 'weight-loss/products/lipo-mic-ultraburn/hero.png',
+        altText: 'Lipo MIC UltraBurn hero art',
+        fallbackUrl: '/images/weight-loss/products/Lipo MIC Ultraburn.png',
+        variant: 'hero',
+      },
+    ],
+    metadata: {
+      category: 'mic',
+      displayOrder: 3,
+    },
+  },
+];
+
 const adminSeedBase = {
   records: [
     {
@@ -1259,6 +1681,122 @@ function buildActivitySeries(
   });
 }
 
+function decimalOrNull(value?: number | null): Prisma.Decimal | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return new Prisma.Decimal(value);
+}
+
+function sanitizeText(value?: string | null): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function normalizeFeatureList(features?: string[]): string[] {
+  if (!Array.isArray(features)) {
+    return [];
+  }
+  return features
+    .map((feature) => sanitizeText(feature) ?? '')
+    .filter((feature) => feature.length > 0);
+}
+
+function normalizePlanOptions(plan?: ProductPlanSeed[]): ProductPlanSeed[] {
+  if (!Array.isArray(plan)) {
+    return [];
+  }
+  return plan.map((option, index) => ({
+    id: option.id || String(index + 1),
+    title: sanitizeText(option.title) ?? `Plan ${index + 1}`,
+    price: Number(option.price ?? 0),
+    oldPrice:
+      option.oldPrice === undefined || option.oldPrice === null
+        ? undefined
+        : Number(option.oldPrice),
+    href: typeof option.href === 'string' ? option.href.trim() : '',
+  }));
+}
+
+function normalizeFaqs(faqs?: ProductFaqSeed[]): ProductFaqSeed[] {
+  if (!Array.isArray(faqs)) {
+    return [];
+  }
+  return faqs.map((faq, index) => ({
+    title: sanitizeText(faq?.title) ?? `Question ${index + 1}`,
+    description: sanitizeText(faq?.description) ?? '',
+  }));
+}
+
+function normalizeWhyChoose(
+  whyChoose?: ProductWhyChooseSeed[],
+): ProductWhyChooseSeed[] {
+  if (!Array.isArray(whyChoose)) {
+    return [];
+  }
+  return whyChoose.map((item) => ({
+    title: sanitizeText(item?.title) ?? '',
+    excerpt: sanitizeText(item?.excerpt) ?? '',
+    imgSrc: sanitizeText(item?.imgSrc) ?? '',
+  }));
+}
+
+function normalizeSteps(
+  steps?: ProductHowItWorksSeed[],
+): ProductHowItWorksSeed[] {
+  if (!Array.isArray(steps)) {
+    return [];
+  }
+  return steps.map((step, index) => ({
+    step: Number(step?.step ?? index + 1),
+    title: sanitizeText(step?.title) ?? `Step ${index + 1}`,
+    description: sanitizeText(step?.description) ?? '',
+  }));
+}
+
+function normalizeImages(images?: ProductImageSeed[]): ProductImageSeed[] {
+  if (!Array.isArray(images)) {
+    return [];
+  }
+  return images
+    .filter((image) => typeof image?.objectKey === 'string' && image.objectKey.trim().length > 0)
+    .map((image, index) => ({
+      id: image.id || `image-${index + 1}-${randomUUID()}`,
+      bucket: image.bucket ?? 'weight-loss-media',
+      objectKey: image.objectKey.replace(/^\/+/, ''),
+      altText: sanitizeText(image.altText) ?? undefined,
+      fallbackUrl: sanitizeText(image.fallbackUrl) ?? undefined,
+      variant: sanitizeText(image.variant) ?? undefined,
+    }));
+}
+
+function mapProductSeed(seed: WeightLossProductSeed): ProductSeedPayload {
+  return {
+    name: seed.name.trim(),
+    href: seed.href.trim(),
+    hrefForm: sanitizeText(seed.hrefForm),
+    oldPrice: decimalOrNull(seed.oldPrice ?? null),
+    price: new Prisma.Decimal(seed.price),
+    popular: seed.popular ?? false,
+    inStock: seed.inStock ?? true,
+    badge: sanitizeText(seed.badge),
+    description: sanitizeText(seed.description),
+    shipping: sanitizeText(seed.shipping),
+    instructions: sanitizeText(seed.instructions),
+    sideEffects: sanitizeText(seed.sideEffects),
+    features: normalizeFeatureList(seed.features),
+    whyChoose: normalizeWhyChoose(seed.whyChoose),
+    plan: normalizePlanOptions(seed.plan),
+    question: normalizeFaqs(seed.question),
+    howItWorks: normalizeSteps(seed.howItWorks),
+    images: normalizeImages(seed.images),
+    metadata: seed.metadata ?? null,
+  };
+}
+
 async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password, {
     type: argon2.argon2id,
@@ -1275,6 +1813,7 @@ async function resetDatabase() {
     prisma.record.deleteMany(),
     prisma.userSnapshot.deleteMany(),
     prisma.userShipping.deleteMany(),
+    prisma.weightLossProduct.deleteMany(),
     prisma.blog.deleteMany(),
     prisma.refreshSession.deleteMany(),
     prisma.passwordResetToken.deleteMany(),
@@ -1540,6 +2079,20 @@ async function seedRenewalNotifications() {
   }
 }
 
+async function seedWeightLossProducts() {
+  for (const product of weightLossProductSeeds) {
+    const payload = mapProductSeed(product);
+    await prisma.weightLossProduct.upsert({
+      where: { token: product.token },
+      update: payload,
+      create: {
+        token: product.token,
+        ...payload,
+      },
+    });
+  }
+}
+
 async function seedBlogs() {
   for (const blog of blogSeeds) {
     await prisma.blog.upsert({
@@ -1576,6 +2129,9 @@ async function main() {
 
   console.log('Seeding patient accounts...');
   const patientCredentials = await seedPatients();
+
+  console.log('Seeding weight loss products...');
+  await seedWeightLossProducts();
 
   console.log('Seeding blogs...');
   await seedBlogs();

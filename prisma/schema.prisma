@@ -249,6 +249,37 @@ model Blog {
   @@index([token], map: "blogs_token_idx")
 }
 
+model WeightLossProduct {
+  id           String   @id @default(uuid()) @db.Uuid
+  token        String   @unique @db.VarChar(160)
+  name         String   @db.VarChar(200)
+  href         String   @db.VarChar(255)
+  hrefForm     String?  @db.VarChar(255)
+  oldPrice     Decimal? @db.Decimal(10, 2)
+  price        Decimal  @db.Decimal(10, 2)
+  popular      Boolean  @default(false)
+  inStock      Boolean  @default(true)
+  badge        String?  @db.VarChar(255)
+  description  String?  @db.Text
+  shipping     String?  @db.VarChar(255)
+  instructions String?  @db.Text
+  sideEffects  String?  @db.Text
+  features     String[] @default([])
+  whyChoose    Json?
+  plan         Json?
+  question     Json?
+  howItWorks   Json?
+  images       Json?
+  metadata     Json?
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@map("weight_loss_products")
+  @@index([popular], map: "weight_loss_products_popular_idx")
+  @@index([inStock], map: "weight_loss_products_in_stock_idx")
+  @@index([createdAt], map: "weight_loss_products_created_idx")
+}
+
 model UserNotification {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @db.Uuid

@@ -6,6 +6,7 @@ export * from './services/prisma.service';
 export * from './services/metrics.service';
 export * from './services/audit-log.service';
 export * from './services/password.service';
+export * from './services/object-storage.service';
 
 // Enums
 export * from './enums/role.enum';
@@ -41,3 +42,6 @@ export * from './constants/password.constants';
 // Utils
 export * from './utils/prisma.utils';
 export * from './utils/time.utils';
+
+// Pipes
+export * from './pipes/json-body-parser.pipe';

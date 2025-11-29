@@ -12,6 +12,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { MailModule } from './modules/mail/mail.module';
 import { HealthModule } from './modules/health/health.module';
 import { BlogsModule } from './modules/blogs';
+import { ProductsModule } from './modules/products';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import type { Request } from 'express';
@@ -105,6 +106,7 @@ import type { Request } from 'express';
     RecordsModule,
     AdminModule,
     BlogsModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [

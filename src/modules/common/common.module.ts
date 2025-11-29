@@ -11,6 +11,7 @@ import { MetricsService } from './services/metrics.service';
 import { MetricsInterceptor } from './interceptors/metrics.interceptor';
 import { AuditLogService } from './services/audit-log.service';
 import { PasswordService } from './services/password.service';
+import { ObjectStorageService } from './services/object-storage.service';
 
 @Global()
 @Module({
@@ -20,6 +21,7 @@ import { PasswordService } from './services/password.service';
     MetricsService,
     AuditLogService,
     PasswordService,
+    ObjectStorageService,
     {
       provide: APP_INTERCEPTOR,
       useClass: RequestIdInterceptor,
@@ -43,6 +45,7 @@ import { PasswordService } from './services/password.service';
     MetricsService,
     AuditLogService,
     PasswordService,
+    ObjectStorageService,
   ],
 })
 export class CommonModule {}

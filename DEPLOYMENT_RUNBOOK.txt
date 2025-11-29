@@ -263,10 +263,20 @@ LOG_LEVEL=info
 PROM_ENABLED=true
 SEED_ADMIN_EMAIL=admin@weightlossclinic.com
 SEED_ADMIN_PASSWORD=ChangeMeNow!123
+OBJECT_STORAGE_DRIVER=minio
+  OBJECT_STORAGE_ENDPOINT=http://172.17.0.1:9000
+OBJECT_STORAGE_REGION=us-east-1
+OBJECT_STORAGE_BUCKET=weight-loss-media
+OBJECT_STORAGE_ACCESS_KEY=devaccess
+OBJECT_STORAGE_SECRET_KEY=devsecret
+OBJECT_STORAGE_FORCE_PATH_STYLE=true
+OBJECT_STORAGE_USE_SSL=false
+OBJECT_STORAGE_PUBLIC_BASE_URL=
 ```
 **Action items:**
 - Rotate DB password, JWT secrets, mail password. Update `.env` + Parameter Store simultaneously.
 - Consider storing `.env` exclusively in Parameter Store and fetching it during deployment to avoid secrets on disk.
+- Once S3 buckets are ready, swap the `OBJECT_STORAGE_*` values accordingly. Until then, keep the MinIO entries above so the API can build public URLs for product images.
 
 ### 4.1.1 PEM Key / SSH Access
 - File: `weight-loss-key.pem`
@@ -285,6 +295,96 @@ SEED_ADMIN_PASSWORD=ChangeMeNow!123
 aws ssm describe-parameters --parameter-filters Key=Path,Option=Recursive,Values=/weightloss/prod --region us-east-1
 ```
 Each entry can be retrieved via `aws ssm get-parameter --with-decryption` or in automation.
+
+### 4.4 Temporary MinIO setup (acts like S3)
+
+Until the production S3 buckets exist, we run MinIO directly on the EC2 host and point the API at it via the `OBJECT_STORAGE_*` vars. Full recipe:
+
+1. **Start MinIO** (run once over SSH/SSM):
+   ```bash
+   sudo mkdir -p /opt/minio/data
+   sudo docker run -d --name minio \
+     -p 9000:9000 -p 9001:9001 \
+     -e MINIO_ROOT_USER=devaccess \
+     -e MINIO_ROOT_PASSWORD=devsecret \
+     -v /opt/minio/data:/data \
+     --restart unless-stopped \
+     quay.io/minio/minio server /data --console-address ":9001"
+   ```
+   - Port 9000 serves S3-compatible traffic.
+   - Port 9001 exposes the MinIO console (reach it via `ssh -L9001:127.0.0.1:9001 ec2-user@54.80.242.78 -i weight-loss-key.pem`).
+
+2. **Configure the `mc` client & bucket**
+   ```bash
+   sudo docker run --rm --network host --entrypoint /bin/sh minio/mc -c \
+     "mc alias set local http://127.0.0.1:9000 devaccess devsecret && \
+       mc mb -p local/weight-loss-media"
+   ```
+   After this, any object placed under `/opt/minio/data/weight-loss-media/...` instantly becomes available via the bucket.
+
+3. **Wire env vars into the app** (already present in `/opt/weightloss/.env`):
+   ```
+   OBJECT_STORAGE_DRIVER=minio
+   OBJECT_STORAGE_ENDPOINT=http://127.0.0.1:9000
+   OBJECT_STORAGE_REGION=us-east-1
+   OBJECT_STORAGE_BUCKET=weight-loss-media
+   OBJECT_STORAGE_ACCESS_KEY=devaccess
+   OBJECT_STORAGE_SECRET_KEY=devsecret
+   OBJECT_STORAGE_FORCE_PATH_STYLE=true
+   OBJECT_STORAGE_USE_SSL=false
+   OBJECT_STORAGE_PUBLIC_BASE_URL=https://api.joeymed.com/minio/{bucket}
+   ```
+   Redeploy (`sudo ./deploy.sh`) any time the env file changes so NestJS picks up the new values. Remember the Nest container cannot reach services bound to `127.0.0.1` on the host; use the Docker bridge IP (`172.17.0.1` on this box) so uploads succeed. You can confirm the address with `ip addr show docker0` if it ever changes.
+
+4. **Expose MinIO via nginx** by using the repo’s `weightloss-nginx.conf` (shipped under `weightloss-nginx.conf`). The important stanza:
+   ```nginx
+   location /minio/ {
+       proxy_pass http://127.0.0.1:9000/;
+       proxy_set_header Host $host;
+       proxy_set_header X-Real-IP $remote_addr;
+       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       proxy_set_header X-Forwarded-Proto $scheme;
+   }
+   ```
+   Deploy it via `scp weightloss-nginx.conf` → copy into `/etc/nginx/conf.d/weightloss.conf` → `sudo nginx -t && sudo systemctl reload nginx`.
+
+5. **Upload real assets** either with the MinIO console (tunnel into port 9001) or via CLI:
+   ```bash
+   sudo docker run --rm --network host --entrypoint /bin/sh minio/mc -c \
+     "mc alias set local http://127.0.0.1:9000 devaccess devsecret && \
+       mc cp /tmp/hero.png local/weight-loss-media/weight-loss/products/glp1-core/hero.png"
+   ```
+
+6. **Security**
+   - Leave ports 9000/9001 closed on the EC2 security group; only nginx proxies `/minio/` externally.
+   - Rotate `MINIO_ROOT_PASSWORD` and the `.env` values whenever administrators change.
+   - Keep daily snapshots of `/opt/minio/data` or replicate to S3 if you add real PHI.
+   - Enable read-only public access through the API proxy (run once after provisioning or after recreating the bucket):
+      ```
+      sudo docker run --rm --network host --entrypoint /bin/sh minio/mc -c \
+        "mc alias set local http://127.0.0.1:9000 devaccess devsecret && \
+         mc anonymous set download local/weight-loss-media"
+      ```
+
+7. **Graduating to S3/CDN**
+   - Create an S3 bucket (e.g., `cdn-weight-loss-media`) and upload assets.
+   - Set `OBJECT_STORAGE_DRIVER=s3`, `OBJECT_STORAGE_BUCKET=<bucket>`, AWS access keys, and optionally `OBJECT_STORAGE_PUBLIC_BASE_URL=https://cdn.example.com/{bucket}`.
+   - Stop/remove the MinIO container (`sudo docker rm -f minio`), redeploy the app, and remove the `/minio/` nginx stanza once traffic is fully on S3.
+
+**Pros/Cons of the current MinIO-on-EC2 approach**
+
+- ✅ Zero AWS storage cost during pilot; data never leaves the private host.
+- ✅ No IAM work required; everything is local credentials.
+- ❌ Single-point-of-failure: if the EC2 instance dies, images go with it unless you back up `/opt/minio/data`.
+- ❌ Images are served through the API host, so large responses increase CPU/bandwidth on the main server.
+- ❌ Not multi-AZ; no lifecycle policies or storage tiers.
+
+**Next steps for S3 migration**
+
+1. Provision an S3 bucket (and optional CloudFront distribution) in `us-east-1`.
+2. Create an IAM user/role limited to that bucket; store keys in Parameter Store.
+3. Update `.env`/Parameter Store with the S3 driver details, redeploy, and remove MinIO.
+4. Update nginx to drop `/minio/` once all URLs point to S3/CDN.
 
 ---
 ## 5. Seeding & Data Reset
@@ -305,13 +405,15 @@ For staging or future resets, copy `tsconfig.json` from repo if missing. Without
 ## 6. Future Deployments (code changes)
 
 1. **Develop & test locally.** Commit code + Prisma migrations.
-2. **Build & push image** (from local machine with AWS CLI creds):
+2. **Build & push image** (from local machine with AWS CLI creds). Recommended:
    ```
-   docker build -t weight-loss-clinic-api .
-   docker tag weight-loss-clinic-api:latest 851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest
-   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 851725402279.dkr.ecr.us-east-1.amazonaws.com
-   docker push 851725402279.dkr.ecr.us-east-1.amazonaws.com/weight-loss-clinic-api:latest
+   scripts/full-deploy.sh --migrate --set-minio-policy
    ```
+   Flags:
+   - `--skip-build` (if image already built/pushed)
+   - `--tag <tag>` to override the default git-hash suffix
+   - `--migrate` to run `prisma migrate deploy` on EC2
+   - `--set-minio-policy` to re-apply the anonymous read policy via `mc`
 3. **Deploy on EC2**
    - Remote in via SSM: `aws ssm start-session --target i-0f9d8eab11737f436`
    - Run deployment script (include `migrate` if schema changed):
@@ -319,11 +421,274 @@ For staging or future resets, copy `tsconfig.json` from repo if missing. Without
      - With migrations: `sudo /opt/weightloss/deploy.sh migrate`
        - Script does: ECR login → `docker-compose pull` → (optional) `npx prisma migrate deploy` inside container → `docker-compose up -d` → prune old images.
 4. **Verify**
-   - `curl http://localhost/v1/ready` (via SSM) or `curl http://54.80.242.78/v1/ready`
-   - Check CloudWatch log group `/weightloss/api` or stream logs locally (`sudo docker logs -f weightloss-api-1`).
+ - `curl http://localhost/v1/ready` (via SSM) or `curl http://54.80.242.78/v1/ready`
+ - `curl -I http://localhost/minio/weight-loss-media/<object>` (ensures the nginx → MinIO proxy works)
+ - Check CloudWatch log group `/weightloss/api` or stream logs locally (`sudo docker logs -f weightloss-api-1`).
 
 **Rollback:**
 - If new image is broken, rerun `docker-compose up -d` with a pinned previous tag. Keep older image tags in ECR for safety.
+
+### 6.1 Weight-loss products rollout (November 2025)
+
+Follow this checklist the first time you want the new products table + API live in production:
+
+1. **Deploy the new image with migration**
+   ```
+   sudo /opt/weightloss/deploy.sh migrate
+   ```
+   This pulls the image, runs `prisma migrate deploy` (creating `weight_loss_products`), and restarts the container.
+
+2. **Seed the catalog (idempotent upserts)**
+   Run the following once. It only touches the `weight_loss_products` table and can be rerun safely.
+   ```
+   export PGPASSWORD='TempPass123!'
+   psql "postgresql://weightloss_admin:TempPass123!@weight-loss-db.cerwwea2qjz1.us-east-1.rds.amazonaws.com:5432/weightloss?sslmode=require" <<'SQL'
+   INSERT INTO weight_loss_products
+     (token, name, href, "hrefForm", "oldPrice", price, popular, "inStock", badge, description, shipping, instructions, "sideEffects", features, "whyChoose", plan, question, "howItWorks", images, metadata)
+   VALUES
+     (
+       'glp1-core-plan',
+       'GLP-1 Core - Injection',
+       '/weight-loss/glp1-core-plan',
+       'wLinkForm',
+       279,
+       199,
+       true,
+       true,
+       'Clinician-guided GLP-1 program (Semaglutide)',
+       'A GLP-1 core plan (Semaglutide) designed to support steady weight loss, appetite control, and metabolic balance with weekly injections.',
+       'Ships in 1-2 days - Free delivery over $40',
+       'Inject once weekly as directed by your provider. Follow the titration schedule and do not exceed the prescribed dose.',
+       'Possible nausea, GI upset, or headache. Effects are usually mild and temporary. Contact your provider if severe.',
+       ARRAY['GLP-1 support with weekly dosing','Focus on appetite and satiety','Provider-guided titration schedule'],
+       '[
+         {"title":"Clinician-guided","excerpt":"Structured plan with check-ins","imgSrc":"/images/weight-loss/products/1.jpg"},
+         {"title":"Appetite control","excerpt":"Helps reduce cravings","imgSrc":"/images/weight-loss/products/2.jpg"},
+         {"title":"Steady progress","excerpt":"Built for sustainable loss","imgSrc":"/images/weight-loss/products/3.jpg"}
+       ]'::jsonb,
+       '[
+         {"id":"1","title":"4 Week","price":199,"oldPrice":279,"href":"https://pay.joeymed.com/b/fZueV6cY7eXLfJee337wA0n"},
+         {"id":"2","title":"8 Weeks","price":299,"oldPrice":440,"href":"https://pay.joeymed.com/b/dRmeV68HRcPDbsY0cd7wA0t"},
+         {"id":"3","title":"12 Week Elite","price":399,"oldPrice":599,"href":"https://pay.joeymed.com/b/9B69AM5vFcPD0Ok9MN7wA0u"}
+       ]'::jsonb,
+       '[
+         {"title":"What is this plan?","description":"A weekly GLP-1 program designed to support steady weight loss with provider oversight and lifestyle guidance."},
+         {"title":"How do I use it?","description":"Inject once per week as instructed. Stay consistent with your dosing day and follow your nutrition plan."},
+         {"title":"Side effects?","description":"Mild nausea or GI upset can occur and often fades. Seek help if symptoms are severe or persistent."}
+       ]'::jsonb,
+       '[
+         {"step":1,"title":"Start weekly dosing","description":"Begin with a starter dose and follow your titration plan."},
+         {"step":2,"title":"Support habits","description":"Pair with nutrition, hydration, and daily movement."},
+         {"step":3,"title":"Track results","description":"Review progress with your provider and adjust as needed."}
+       ]'::jsonb,
+       '[
+         {"id":"glp1-core-plan-hero","bucket":"weight-loss-media","objectKey":"weight-loss/products/glp1-core/hero.png","altText":"GLP-1 Core hero art","fallbackUrl":"/images/weight-loss/products/GLP-1 Core.png","variant":"hero"},
+         {"id":"glp1-core-plan-alt-1","bucket":"weight-loss-media","objectKey":"weight-loss/products/glp1-core/detail-1.png","altText":"GLP-1 Core detail 1","fallbackUrl":"/images/weight-loss/products/GLP-1 Core.png","variant":"detail"},
+         {"id":"glp1-core-plan-alt-2","bucket":"weight-loss-media","objectKey":"weight-loss/products/glp1-core/detail-2.png","altText":"GLP-1 Core detail 2","fallbackUrl":"/images/weight-loss/products/GLP-1 Core.png","variant":"detail"}
+       ]'::jsonb,
+       '{"category":"glp-1","displayOrder":1}'::jsonb
+     )
+   ON CONFLICT (token) DO UPDATE SET
+     name = EXCLUDED.name,
+     href = EXCLUDED.href,
+     "hrefForm" = EXCLUDED."hrefForm",
+     "oldPrice" = EXCLUDED."oldPrice",
+     price = EXCLUDED.price,
+     popular = EXCLUDED.popular,
+     "inStock" = EXCLUDED."inStock",
+     badge = EXCLUDED.badge,
+     description = EXCLUDED.description,
+     shipping = EXCLUDED.shipping,
+     instructions = EXCLUDED.instructions,
+     "sideEffects" = EXCLUDED."sideEffects",
+     features = EXCLUDED.features,
+     "whyChoose" = EXCLUDED."whyChoose",
+     plan = EXCLUDED.plan,
+     question = EXCLUDED.question,
+     "howItWorks" = EXCLUDED."howItWorks",
+     images = EXCLUDED.images,
+     metadata = EXCLUDED.metadata;
+
+   INSERT INTO weight_loss_products
+     (token, name, href, "hrefForm", "oldPrice", price, popular, "inStock", badge, description, shipping, instructions, "sideEffects", features, "whyChoose", plan, question, "howItWorks", images, metadata)
+   VALUES
+     (
+       'glp1-plus-core-plan',
+       'GLP-1 Plus Core - Injection',
+       '/weight-loss/glp1-plus-core-plan',
+       'wLinkForm',
+       399,
+       279,
+       false,
+       true,
+       'Enhanced guidance and follow-ups (Tirzepatide)',
+       'An enhanced GLP-1 (Tirzepatide) plan with weekly injections, added provider follow-ups, and lifestyle coaching support for stronger adherence.',
+       'Ships in 1-2 days - Free delivery over $40',
+       'Inject weekly on a consistent day. Attend scheduled check-ins and follow your titration and nutrition plan.',
+       'Potential nausea, stomach upset, or headache. Typically transient; contact your provider if persistent or severe.',
+       ARRAY['Weekly GLP-1 injections','Extra provider follow-ups','Lifestyle and adherence support'],
+       '[
+         {"title":"More support","excerpt":"Added check-ins for accountability","imgSrc":"/images/weight-loss/products/1.jpg"},
+         {"title":"Personalized tweaks","excerpt":"Dosing adjusted to your response","imgSrc":"/images/weight-loss/products/2.jpg"},
+         {"title":"Clear roadmap","excerpt":"Structured plan to stay on track","imgSrc":"/images/weight-loss/products/3.jpg"}
+       ]'::jsonb,
+       '[
+         {"id":"5","title":"4 Weeks","price":279,"oldPrice":379,"href":"https://pay.joeymed.com/b/eVq6oA9LVeXL68E1gh7wA0p"},
+         {"id":"6","title":"8 Weeks","price":399,"oldPrice":458,"href":"https://pay.joeymed.com/b/aFa6oA6zJ8zn2Ws4st7wA0v"},
+         {"id":"7","title":"12 Week Elite","price":499,"oldPrice":589,"href":"https://pay.joeymed.com/b/aFacMYbU36rf68E5wx7wA0A"}
+       ]'::jsonb,
+       '[
+         {"title":"What is different vs Core?","description":"You receive more frequent provider follow-ups and added coaching support to help maintain momentum."},
+         {"title":"How do I get started?","description":"Complete your intake, get approved, and begin weekly injections with an adherence plan and check-ins."},
+         {"title":"Any diet rules?","description":"Focus on protein, hydration, and fiber-rich foods. Your provider may share a simple weekly nutrition target."}
+       ]'::jsonb,
+       '[
+         {"step":1,"title":"Intake and approval","description":"Complete intake and provider review."},
+         {"step":2,"title":"Weekly dosing","description":"Follow your injection plus titration schedule."},
+         {"step":3,"title":"Check-ins","description":"Use follow-ups to fine-tune and stay consistent."}
+       ]'::jsonb,
+       '[
+         {"id":"glp1-plus-core-hero","bucket":"weight-loss-media","objectKey":"weight-loss/products/glp1-plus-core/hero.png","altText":"GLP-1 Plus Core hero art","fallbackUrl":"/images/weight-loss/products/GLP-1 Plus Core.png","variant":"hero"},
+         {"id":"glp1-plus-core-alt-1","bucket":"weight-loss-media","objectKey":"weight-loss/products/glp1-plus-core/detail-1.png","altText":"GLP-1 Plus Core detail 1","fallbackUrl":"/images/weight-loss/products/GLP-1 Plus Core.png","variant":"detail"}
+       ]'::jsonb,
+       '{"category":"glp-1","displayOrder":2}'::jsonb
+     )
+   ON CONFLICT (token) DO UPDATE SET
+     name = EXCLUDED.name,
+     href = EXCLUDED.href,
+     "hrefForm" = EXCLUDED."hrefForm",
+     "oldPrice" = EXCLUDED."oldPrice",
+     price = EXCLUDED.price,
+     popular = EXCLUDED.popular,
+     "inStock" = EXCLUDED."inStock",
+     badge = EXCLUDED.badge,
+     description = EXCLUDED.description,
+     shipping = EXCLUDED.shipping,
+     instructions = EXCLUDED.instructions,
+     "sideEffects" = EXCLUDED."sideEffects",
+     features = EXCLUDED.features,
+     "whyChoose" = EXCLUDED."whyChoose",
+     plan = EXCLUDED.plan,
+     question = EXCLUDED.question,
+     "howItWorks" = EXCLUDED."howItWorks",
+     images = EXCLUDED.images,
+     metadata = EXCLUDED.metadata;
+
+   INSERT INTO weight_loss_products
+     (token, name, href, "hrefForm", "oldPrice", price, popular, "inStock", badge, description, shipping, instructions, "sideEffects", features, "whyChoose", plan, question, "howItWorks", images, metadata)
+   VALUES
+     (
+       'lipo-mic-ultraburn',
+       'Lipo MIC UltraBurn - Injection',
+       '/weight-loss/lipo-mic-ultraburn',
+       'wLinkForm',
+       199,
+       89,
+       false,
+       true,
+       'Metabolism and energy support',
+       'A Lipo MIC blend to support fat metabolism and energy alongside your nutrition and movement plan.',
+       'Ships in 1-2 days - Free delivery over $40',
+       'Use as directed by your provider. Follow the recommended schedule and pair with diet and activity guidance.',
+       'Generally well-tolerated; mild injection-site discomfort possible. Contact your provider if you experience unusual symptoms.',
+       ARRAY['Lipo MIC (lipotropics) blend','Supports fat metabolism and energy','Provider-guided schedule'],
+       '[
+         {"title":"Metabolic nudge","excerpt":"Designed to complement weight efforts","imgSrc":"/images/weight-loss/products/1.jpg"},
+         {"title":"Convenient cadence","excerpt":"Simple provider-guided schedule","imgSrc":"/images/weight-loss/products/2.jpg"},
+         {"title":"Pairs with GLP-1","excerpt":"Use alongside diet and movement","imgSrc":"/images/weight-loss/products/3.jpg"}
+       ]'::jsonb,
+       '[
+         {"id":"5","title":"4 Weeks","price":60,"oldPrice":120,"href":"https://pay.joeymed.com/b/4gM7sEaPZg1P40waQR7wA0w"},
+         {"id":"6","title":"8 Weeks","price":100,"oldPrice":160,"href":"https://pay.joeymed.com/b/28E28kf6fbLz68Egbb7wA0x"},
+         {"id":"7","title":"12 Week Elite","price":120,"oldPrice":200,"href":"https://pay.joeymed.com/b/00w5kw3nxcPD9kQ1gh7wA0y"}
+       ]'::jsonb,
+       '[
+         {"title":"What is Lipo MIC?","description":"A combination of lipotropic compounds used to support fat metabolism and energy as part of a broader plan."},
+         {"title":"How is it used?","description":"Administer on the schedule provided by your clinician. Keep consistent nutrition, hydration, and activity."},
+        {"title":"Can I combine with GLP-1?","description":"Often used alongside lifestyle and other therapies. Always follow your provider''s guidance."}
+       ]'::jsonb,
+       '[
+         {"step":1,"title":"Provider plan","description":"Confirm your dosing cadence and goals."},
+         {"step":2,"title":"Stay consistent","description":"Follow the schedule and log how you feel."},
+         {"step":3,"title":"Review and adjust","description":"Share progress; your plan can be refined."}
+       ]'::jsonb,
+       '[
+         {"id":"lipo-ultraburn-hero","bucket":"weight-loss-media","objectKey":"weight-loss/products/lipo-mic-ultraburn/hero.png","altText":"Lipo MIC UltraBurn hero art","fallbackUrl":"/images/weight-loss/products/Lipo MIC Ultraburn.png","variant":"hero"}
+       ]'::jsonb,
+       '{"category":"mic","displayOrder":3}'::jsonb
+     )
+   ON CONFLICT (token) DO UPDATE SET
+     name = EXCLUDED.name,
+     href = EXCLUDED.href,
+     "hrefForm" = EXCLUDED."hrefForm",
+     "oldPrice" = EXCLUDED."oldPrice",
+     price = EXCLUDED.price,
+     popular = EXCLUDED.popular,
+     "inStock" = EXCLUDED."inStock",
+     badge = EXCLUDED.badge,
+     description = EXCLUDED.description,
+     shipping = EXCLUDED.shipping,
+     instructions = EXCLUDED.instructions,
+     "sideEffects" = EXCLUDED."sideEffects",
+     features = EXCLUDED.features,
+     "whyChoose" = EXCLUDED."whyChoose",
+     plan = EXCLUDED.plan,
+     question = EXCLUDED.question,
+     "howItWorks" = EXCLUDED."howItWorks",
+     images = EXCLUDED.images,
+     metadata = EXCLUDED.metadata;
+   SQL
+   ```
+
+3. **Verify endpoints**
+   ```
+   curl -s https://api.joeymed.com/v1/weight-loss-products | jq '.[].token'
+   curl -s https://api.joeymed.com/v1/weight-loss-products/glp1-core-plan | jq '.name'
+   ```
+   Both the list and detail endpoints are public. POST/PUT/DELETE require an admin JWT (`Authorization: Bearer <token>`).
+
+4. **Check MinIO assets** – ensure the image object keys referenced above exist in the `weight-loss-media` bucket (see section 4.4). If not, upload placeholder PNGs so the frontend does not render broken links.
+
+### 6.2 Editing catalog entries via Swagger or Postman
+
+The `weight-loss-products` endpoints live under `https://api.joeymed.com/docs` → “weight-loss-products”. Mutations require an admin JWT.
+
+1. **Obtain an admin token** via the Auth → `/v1/auth/login` endpoint, or reuse the credential from the seed data (`admin@weightlossclinic.com / 12345678` by default). Copy the `accessToken`.
+2. **Swagger UI**
+   - Open `https://api.joeymed.com/docs`, click the padlock icon, and enter `Bearer <token>`.
+   - Expand `PUT /v1/weight-loss-products/{token}`. Example body to swap a hero image:
+     ```json
+     {
+       "images": [
+         {
+           "id": "glp1-core-plan-hero",
+           "bucket": "weight-loss-media",
+           "objectKey": "weight-loss/products/glp1-core/new-hero.png",
+           "fallbackUrl": "/images/weight-loss/products/GLP-1 Core.png",
+           "variant": "hero"
+         }
+       ]
+     }
+     ```
+   - Execute the call; the response will include the normalized payload plus the computed `url`.
+3. **Postman**
+   - Method: `PUT https://api.joeymed.com/v1/weight-loss-products/glp1-core-plan`
+   - Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`.
+   - Body: same JSON as above.
+4. **Upload the matching asset** to MinIO before/after the API call (section 4.4 step 5).
+5. **Smoke tests**
+   ```bash
+   # List all products
+   curl -s https://api.joeymed.com/v1/weight-loss-products | jq '.[].token'
+
+   # Fetch detail + confirm hero URL
+   curl -s https://api.joeymed.com/v1/weight-loss-products/glp1-core-plan | jq '.images'
+
+   # Hit the proxied MinIO object (returns 404 until an image is uploaded)
+   curl -I https://api.joeymed.com/minio/weight-loss-media/weight-loss/products/glp1-core/new-hero.png
+   ```
+
+If a request fails, inspect `sudo docker logs weightloss-api-1` on EC2 or use CloudWatch `/weightloss/api`.
 
 ---
 ## 7. Database Migrations (with live data)
@@ -412,6 +777,49 @@ If you later prefer an Application Load Balancer (for zero-downtime deploys), yo
 - Frontend environment/config should point to that base (e.g., `NEXT_PUBLIC_API_URL=https://api.joeymed.com`). No more mixed-content warnings because both sides use HTTPS.
 - CORS already allows `https://joeymed.com` and `https://app.joeymed.com`. If you add more domains, append them to `CORS_ORIGINS` in `.env` and redeploy.
 - If Amplify needs WebSocket/SSE, ensure nginx proxies those paths as well (currently everything under `/` is proxied to NestJS).
+
+### 9.2 Frontend ↔ API ↔ MinIO flow (weight-loss products)
+
+1. **Environment variables in Amplify**
+   - `NEXT_PUBLIC_API_URL=https://api.joeymed.com/v1`
+   - Optional: `NEXT_PUBLIC_PRODUCTS_TAGLINE`, etc.
+
+2. **Fetching data (Next.js example)**
+  ```ts
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/weight-loss-products`, {
+    cache: 'no-store',
+  });
+  const products: ProductResponseDto[] = await res.json();
+  ```
+  Each product already includes normalized `plan`, `question`, `howItWorks`, `images`, and `whyChoose` arrays.
+
+3. **Rendering images in Next.js**
+  ```tsx
+  {product.images.map((image) => (
+    <Image
+      key={image.id}
+      src={image.url ?? image.fallbackUrl ?? '/placeholder.png'}
+      alt={image.altText ?? product.name}
+      width={640}
+      height={640}
+    />
+  ))}
+  ```
+  - Display `product.whyChoose` artwork with the provided `imgSrc` URLs (these are now generated automatically when the admin uploads a file).
+  - When MinIO hosts the asset, `url` looks like `https://api.joeymed.com/minio/weight-loss-media/...` thanks to `OBJECT_STORAGE_PUBLIC_BASE_URL`. Switching to S3/CDN only requires changing the env vars.
+
+4. **Admin tooling (mini-admin or Swagger)**
+  - The `PUT /v1/weight-loss-products/:token` endpoint now accepts either `application/json` (when only metadata changes) or `multipart/form-data` with:
+    - A `payload` field that contains the JSON body shaped like `UpdateWeightLossProductDto`.
+    - One binary field per image you want to upload. Set `images[].uploadField` (or `whyChoose[].imgSrcUploadField`) in the JSON to the matching form-data field name.
+  - Our mini-admin UI (running on `http://localhost:3000`) previews product thumbnails, lets you add more `images[]` entries, and lets you upload brand-new files for both `images[]` and the `whyChoose[]` cards. Every successful upload is pushed to MinIO via the backend service and the resulting public URL is persisted automatically.
+  - On the frontend, simply use the URLs returned by the API; no additional signing logic is required.
+
+5. **Testing checklist**
+  - `curl https://api.joeymed.com/v1/weight-loss-products | jq '.[].token'`
+  - `curl https://api.joeymed.com/minio/weight-loss-media/...` (should return 200 if the object exists, 404 otherwise).
+  - Upload a test image via the mini-admin tool; verify the response includes the new `url` and the image is reachable via `https://api.joeymed.com/minio/...`.
+  - In Amplify preview builds, ensure the Network tab shows 200 responses from `https://api.joeymed.com` and `https://api.joeymed.com/minio/...`.
 
 ---
 ## 10. SSH Hardening

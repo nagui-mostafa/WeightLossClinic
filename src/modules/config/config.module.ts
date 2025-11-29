@@ -51,6 +51,21 @@ import configuration from './configuration';
         // Features
         EMAIL_VERIFICATION_ENABLED: Joi.boolean().default(false),
         PROM_ENABLED: Joi.boolean().default(true),
+
+        // Object storage
+        OBJECT_STORAGE_DRIVER: Joi.string()
+          .valid('minio', 's3')
+          .default('minio'),
+        OBJECT_STORAGE_ENDPOINT: Joi.string()
+          .allow('')
+          .default('http://localhost:9000'),
+        OBJECT_STORAGE_REGION: Joi.string().default('us-east-1'),
+        OBJECT_STORAGE_BUCKET: Joi.string().default('weight-loss-media'),
+        OBJECT_STORAGE_ACCESS_KEY: Joi.string().allow('').default(''),
+        OBJECT_STORAGE_SECRET_KEY: Joi.string().allow('').default(''),
+        OBJECT_STORAGE_FORCE_PATH_STYLE: Joi.boolean().default(true),
+        OBJECT_STORAGE_USE_SSL: Joi.boolean().default(false),
+        OBJECT_STORAGE_PUBLIC_BASE_URL: Joi.string().allow('').optional(),
       }),
       validationOptions: {
         allowUnknown: true,
