@@ -34,7 +34,11 @@ export class AuthController {
 
   @Post('signup')
   @Public()
-  @ApiOperation({ summary: 'Patient signup' })
+  @ApiOperation({
+    summary: 'Patient signup',
+    description:
+      'Creates a patient account. If email verification is enabled, tokens are omitted and requiresEmailVerification=true. Otherwise JWT tokens are returned.',
+  })
   @ApiCreatedResponse({ type: AuthResponseDto })
   async signup(
     @Body() dto: SignupDto,

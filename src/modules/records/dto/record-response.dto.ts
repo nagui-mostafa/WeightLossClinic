@@ -1,4 +1,5 @@
 import { MedicationType } from '../../common';
+import { ProductCategory } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RecordResponseDto {
@@ -17,8 +18,17 @@ export class RecordResponseDto {
   @ApiProperty({ example: 'Semaglutide' })
   medication!: string;
 
-  @ApiPropertyOptional({ enum: MedicationType, example: MedicationType.INJECTABLE })
+  @ApiPropertyOptional({
+    enum: MedicationType,
+    example: MedicationType.INJECTABLE,
+  })
   medicationType?: MedicationType | null;
+
+  @ApiPropertyOptional({
+    enum: ProductCategory,
+    example: ProductCategory.WEIGHT_LOSS,
+  })
+  category?: ProductCategory | null;
 
   @ApiProperty({ example: '2025-09-01T10:20:00.000Z' })
   purchasedAt!: string;
@@ -28,6 +38,18 @@ export class RecordResponseDto {
 
   @ApiPropertyOptional({ example: 'Weekly injections with nutrition consult.' })
   notes?: string | null;
+
+  @ApiPropertyOptional({ example: '123456789012' })
+  trackingNumber?: string | null;
+
+  @ApiPropertyOptional({ example: 299.99, description: 'Plan price in USD' })
+  price?: number | null;
+
+  @ApiPropertyOptional({
+    example: 4,
+    description: 'Plan duration in weeks',
+  })
+  planDuration?: number | null;
 
   @ApiProperty({ example: '2025-09-01T10:20:00.000Z' })
   createdAt!: string;

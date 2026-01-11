@@ -48,6 +48,8 @@ entire environment or operate on top of the existing setup confidently.
   - Application logs (piped from Docker) go to CloudWatch Logs `/weightloss/api`
   - nginx logs stay local (`/var/log/nginx`); optional to ship via CloudWatch agent
 - **Cost profile:** ≈ $45/mo (EC2 + RDS + logs). No NAT, ALB, or App Runner charges.
+  - Any "Amazon VPC" costs typically come from public IPv4 charges on the EC2 instance,
+    NAT gateways, or VPC interface endpoints (none are intentionally provisioned here).
 
 ---
 ## 2. One-Time Provisioning Commands (already executed)
@@ -206,6 +208,44 @@ fi
 
 sudo "$COMPOSE" up -d
 sudo docker image prune -f >/dev/null 2>&1
+```
+
+### scripts/full-deploy.sh (local helper to build/push/deploy via SSM)
+
+Usage (common path):
+```
+scripts/full-deploy.sh --migrate --seed --smoke
+# add --profile <aws-profile> if needed
+```
+
+Flags:
+- `--migrate` run `prisma migrate deploy` on the host (via deploy.sh migrate)
+- `--seed` run `npm run db:seed` on the host after deploy
+- `--smoke` run health/ready/categories curl checks after deploy
+- `--no-latest` skip tagging/pushing `:latest` (deploy.sh pulls :latest by default)
+- `--tag <tag>` override image tag suffix (default = current git short hash)
+- `--skip-build` assume image already built/pushed
+- `--set-minio-policy` re-apply MinIO anonymous download policy
+
+What it does:
+1) Build image, tag with `<hash>` and `:latest` (unless `--no-latest`), push to ECR.
+2) Run `/opt/weightloss/deploy.sh` on the EC2 host via SSM (with or without migrate).
+3) Optionally seed and run smoke tests on the host.
+4) Fails fast if the SSM command status is not Success.
+
+Prereqs:
+- Docker + AWS CLI on the local machine; AWS credentials/profile set.
+- EC2 instance `i-0f9d8eab11737f436` managed by SSM.
+
+Typical prod deploy for new code + migrations + seeds:
+```
+scripts/full-deploy.sh --migrate --seed --smoke
+```
+
+If you want to pin a specific tag and not use latest:
+```
+scripts/full-deploy.sh --tag mytag --no-latest --migrate --seed --smoke
+# then update /opt/weightloss/docker-compose.yml on host to use mytag and rerun deploy.sh
 ```
 
 ### nginx reverse proxy
@@ -690,6 +730,28 @@ The `weight-loss-products` endpoints live under `https://api.joeymed.com/docs` �
 
 If a request fails, inspect `sudo docker logs weightloss-api-1` on EC2 or use CloudWatch `/weightloss/api`.
 
+### 6.3 Groupon QA coupons & mock flag
+
+The Groupon integration now has two deployment-time tasks:
+
+1. **Disable the mock handler in prod** – run the deploy helper with `--set-var GROUPON_USE_MOCK=false` to surgically flip the flag inside `/opt/weightloss/.env` without re-uploading the entire file:
+   ```
+   scripts/full-deploy.sh --set-var GROUPON_USE_MOCK=false
+   ```
+   Combine this with `--update-env --env-file prod.env` if several values changed at once.
+
+2. **Seed the QA vouchers without touching real data** – use the new flag to run the targeted Prisma script inside the freshly deployed image:
+   ```
+   scripts/full-deploy.sh --seed-groupon-tests
+   ```
+   Under the hood this executes `npx ts-node -r tsconfig-paths/register scripts/seed-groupon-test-codes.ts`, which performs idempotent upserts for `TFZ3D9F9`, `MZXBDKNY`, `FQ7XEUMF`, `WXCRVAE7`, and `Q62DUNE5` with the `groupon:test` metadata (planWeeks=0, productToken=test). Run it any time the QA coupons need to be reloaded; duplicates are ignored.
+
+3. **Typical end-to-end deploy** – build/push, flip the env var, migrate (if needed), and seed the QA coupons in one shot:
+   ```
+   scripts/full-deploy.sh --migrate --set-var GROUPON_USE_MOCK=false --seed-groupon-tests --smoke
+   ```
+   The script still supports `--seed` (full database reset) for staging only; use `--seed-groupon-tests` in production to avoid wiping live data.
+
 ---
 ## 7. Database Migrations (with live data)
 
@@ -784,6 +846,8 @@ If you later prefer an Application Load Balancer (for zero-downtime deploys), yo
    - `NEXT_PUBLIC_API_URL=https://api.joeymed.com/v1`
    - Optional: `NEXT_PUBLIC_PRODUCTS_TAGLINE`, etc.
 
+   > Tip: keep staging/local builds pointed at `http://localhost:3333/v1` so you can test uploads against your laptop + local MinIO before shipping new assets to prod.
+
 2. **Fetching data (Next.js example)**
   ```ts
   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/weight-loss-products`, {
@@ -807,13 +871,18 @@ If you later prefer an Application Load Balancer (for zero-downtime deploys), yo
   ```
   - Display `product.whyChoose` artwork with the provided `imgSrc` URLs (these are now generated automatically when the admin uploads a file).
   - When MinIO hosts the asset, `url` looks like `https://api.joeymed.com/minio/weight-loss-media/...` thanks to `OBJECT_STORAGE_PUBLIC_BASE_URL`. Switching to S3/CDN only requires changing the env vars.
+   - All URLs are absolute, so Next.js does not need signed URLs or presigned requests; the nginx proxy handles access control.
+   - The `images` array may be empty; always provide a fallback (placeholder art) to avoid runtime errors during SSR.
 
 4. **Admin tooling (mini-admin or Swagger)**
   - The `PUT /v1/weight-loss-products/:token` endpoint now accepts either `application/json` (when only metadata changes) or `multipart/form-data` with:
     - A `payload` field that contains the JSON body shaped like `UpdateWeightLossProductDto`.
     - One binary field per image you want to upload. Set `images[].uploadField` (or `whyChoose[].imgSrcUploadField`) in the JSON to the matching form-data field name.
   - Our mini-admin UI (running on `http://localhost:3000`) previews product thumbnails, lets you add more `images[]` entries, and lets you upload brand-new files for both `images[]` and the `whyChoose[]` cards. Every successful upload is pushed to MinIO via the backend service and the resulting public URL is persisted automatically.
-  - On the frontend, simply use the URLs returned by the API; no additional signing logic is required.
+    - Hero images: ensure the `id` remains `hero` so the backend overwrites the previous file (`weight-loss/products/<token>/hero.<ext>`). This avoids orphaned files.
+    - Why choose cards: each row can either supply an `imgSrc` (remote CDN asset) or attach a file; when a file is uploaded the API generates a stable key under `weight-loss/products/<token>/why-choose/<slug>.jpeg`.
+  - On the frontend, simply use the URLs returned by the API; no additional signing logic is required. During SSR, prefer `next/image` with `unoptimized` or configure the remote pattern to allow `api.joeymed.com`.
+  - For cache busting in Next.js, append `?updatedAt=${product.updatedAt}` when rendering `<Image>` if you’re concerned about CDN caching stale heroes.
 
 5. **Testing checklist**
   - `curl https://api.joeymed.com/v1/weight-loss-products | jq '.[].token'`
@@ -953,5 +1022,18 @@ Notes:
 - Costs exclude the Amplify frontend (billed separately) and any Route 53 zones or certificates.
 - Adding TLS via ACM + ALB would increase costs by ~$20/mo. A NAT Gateway would add ~$33/mo (not used).
 - CloudWatch costs stay low if log retention is managed (default indefinite). Set retention (e.g., 30 days) to cap storage fees.
+- "Amazon VPC" charges are not part of Amplify. They usually come from backend VPC resources:
+  - Public IPv4 hourly charge (for the EC2 public IP).
+  - NAT gateway hourly + data processing charges (not used here).
+  - VPC interface endpoints (only if created).
+  To confirm the exact VPC usage types:
+  ```
+  aws ce get-cost-and-usage \
+    --time-period Start=YYYY-MM-01,End=YYYY-MM-01 \
+    --granularity MONTHLY \
+    --metrics UnblendedCost \
+    --group-by Type=DIMENSION,Key=USAGE_TYPE \
+    --filter '{"Dimensions":{"Key":"SERVICE","Values":["Amazon Virtual Private Cloud"]}}'
+  ```
 
 ---

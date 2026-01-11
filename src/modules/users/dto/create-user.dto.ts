@@ -1,13 +1,17 @@
 import { Role } from '../../common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsEmail,
   IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { UpdateUserRecordDto, UpdateUserSnapshotDto } from './update-user.dto';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Jane' })
@@ -56,4 +60,24 @@ export class CreateUserDto {
   @ApiPropertyOptional({ default: true })
   @IsOptional()
   isActive?: boolean = true;
+
+  @ApiPropertyOptional({
+    type: UpdateUserSnapshotDto,
+    nullable: true,
+    description: 'Initial snapshot payload to associate with the user',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateUserSnapshotDto)
+  snapshot?: UpdateUserSnapshotDto | null;
+
+  @ApiPropertyOptional({
+    type: [UpdateUserRecordDto],
+    description: 'Records to seed for the user upon creation',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateUserRecordDto)
+  records?: UpdateUserRecordDto[];
 }

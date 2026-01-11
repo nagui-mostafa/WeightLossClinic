@@ -7,4 +7,3 @@ export enum ActivityKind {
   SHOT = 'SHOT',
   NOTE = 'NOTE',
 }
-

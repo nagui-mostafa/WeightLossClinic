@@ -16,6 +16,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ActivityKind, MedicationType } from '../../common';
+import { ProductCategory } from '@prisma/client';
 
 export class UpdateUserProfileDto {
   @ApiPropertyOptional({ example: 'Jane' })
@@ -206,10 +207,21 @@ export class UpdateUserRecordDto {
   @IsNotEmpty()
   medication!: string;
 
-  @ApiPropertyOptional({ enum: MedicationType, example: MedicationType.INJECTABLE })
+  @ApiPropertyOptional({
+    enum: MedicationType,
+    example: MedicationType.INJECTABLE,
+  })
   @IsOptional()
   @IsEnum(MedicationType)
   medicationType?: MedicationType;
+
+  @ApiPropertyOptional({
+    enum: ProductCategory,
+    example: ProductCategory.WEIGHT_LOSS,
+  })
+  @IsOptional()
+  @IsEnum(ProductCategory)
+  category?: ProductCategory;
 
   @ApiProperty({ example: '2025-09-01T00:00:00.000Z' })
   @IsDateString()
@@ -233,6 +245,32 @@ export class UpdateUserRecordDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ example: '123456789012' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  trackingNumber?: string;
+
+  @ApiPropertyOptional({ enum: ['ACTIVE', 'COMPLETED', 'CANCELED'], example: 'ACTIVE' })
+  @IsOptional()
+  @IsString()
+  status?: 'ACTIVE' | 'COMPLETED' | 'CANCELED';
+
+  @ApiPropertyOptional({ example: 299.99, description: 'Plan price in USD' })
+  @IsOptional()
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(0)
+  price?: number;
+
+  @ApiPropertyOptional({
+    example: 4,
+    description: 'Plan duration in weeks',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  planDuration?: number;
 }
 
 export class UpdateUserShotDto {

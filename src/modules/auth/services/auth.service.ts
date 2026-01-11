@@ -12,7 +12,10 @@ import {
   PrismaService,
   AuditLogService,
   AuditAction,
+  Role,
 } from '../../common';
+import { AdminService } from '../../admin/services/admin.service';
+import { UserResponseDto } from '../../users/dto/user-response.dto';
 import { TokensService } from './tokens.service';
 import { SessionsService } from './sessions.service';
 import { PasswordResetService } from './password-reset.service';
@@ -44,6 +47,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly auditLogService: AuditLogService,
+    private readonly adminService: AdminService,
   ) {}
 
   async signup(
@@ -94,10 +98,12 @@ export class AuthService {
       dto.email.toLowerCase(),
     )) as PrismaUser | null;
 
-    if (!user || !user.isActive) {
+    if (!user) {
       await this.logLoginFailure(dto.email, context);
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    await this.usersService.syncUserActiveStatus(user);
 
     const passwordMatches = await this.passwordService.verifyPassword(
       user.passwordHash,
@@ -118,6 +124,7 @@ export class AuthService {
 
     const tokens = await this.generateAndPersistTokens(user, context);
     const userDto = await this.usersService.getUserWithRecords(user.id);
+    const enrichedUser = await this.attachAdminStats(userDto);
 
     await this.auditLogService.log(AuditAction.LOGIN_SUCCESS, {
       actorUserId: user.id,
@@ -131,7 +138,7 @@ export class AuthService {
 
     return {
       tokens: this.toAuthTokensDto(tokens),
-      user: userDto,
+      user: enrichedUser,
       requiresEmailVerification: false,
     };
   }
@@ -183,8 +190,12 @@ export class AuthService {
     const user = (await this.usersService.findByIdOrThrow(
       userId,
     )) as PrismaUser;
+
+    await this.usersService.syncUserActiveStatus(user);
+
     const tokens = await this.generateAndPersistTokens(user, context);
     const userProfile = await this.usersService.getUserWithRecords(userId);
+    const enrichedUser = await this.attachAdminStats(userProfile);
 
     await this.auditLogService.log(AuditAction.REFRESH_TOKEN_ROTATED, {
       actorUserId: userId,
@@ -198,7 +209,7 @@ export class AuthService {
 
     return {
       tokens: this.toAuthTokensDto(tokens),
-      user: userProfile,
+      user: enrichedUser,
     };
   }
 
@@ -208,7 +219,12 @@ export class AuthService {
   ): Promise<void> {
     const user = await this.usersService.findByEmail(dto.email.toLowerCase());
 
-    if (!user || !user.isActive) {
+    if (!user) {
+      return;
+    }
+
+    const isActive = await this.usersService.isUserActive(user);
+    if (!isActive) {
       return;
     }
 
@@ -283,8 +299,8 @@ export class AuthService {
   }
 
   async getMe(userId: string) {
-    const user = await this.usersService.findByIdOrThrow(userId);
-    return this.usersService.getUserWithRecords(user.id);
+    const userDto = await this.usersService.getUserWithRecords(userId);
+    return this.attachAdminStats(userDto);
   }
 
   private async generateAndPersistTokens(
@@ -327,6 +343,24 @@ export class AuthService {
       refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn,
       refreshExpiresIn: tokens.refreshExpiresIn,
+    };
+  }
+
+  private async attachAdminStats(
+    userDto: UserResponseDto,
+  ): Promise<UserResponseDto> {
+    if (userDto.profile.role !== Role.ADMIN) {
+      return userDto;
+    }
+
+    const stats = await this.adminService.getStats();
+    const notifications =
+      await this.usersService.getRecentNotifications(5);
+
+    return {
+      ...userDto,
+      notifications,
+      adminStats: stats,
     };
   }
 }

@@ -16,6 +16,7 @@ import { AccessTokenStrategy } from './strategies/access-token.strategy';
 import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
     UsersModule,
     MailModule,
     ConfigModule,
+    AdminModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({}),
   ],

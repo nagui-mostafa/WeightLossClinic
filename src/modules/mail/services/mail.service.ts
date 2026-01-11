@@ -70,6 +70,56 @@ export class MailService {
     });
   }
 
+  async sendAdminCreatedCredentialsEmail(
+    email: string,
+    firstName: string,
+    password: string,
+  ): Promise<void> {
+    if (!this.mailEnabled) {
+      this.logger.warn(
+        `Mail transport not configured. Skipping credentials email for ${email}`,
+      );
+      return;
+    }
+
+    const joeymedUrl = 'https://joeymed.com/';
+    const subject = 'Welcome to Joeymed! 🌟';
+
+    const text = [
+      `Hi ${firstName},`,
+      '',
+      "We're thrilled to help you start your health journey! Your account at Joeymed (" +
+        joeymedUrl +
+        ') is ready to go.',
+      '',
+      'Your Login Credentials:',
+      '',
+      `Email: ${email}`,
+      `Password: ${password}`,
+      '',
+      "If you have any questions or just need a bit of support, we're always here to help!",
+      '',
+      'To your health,',
+      `The Joeymed Team ${joeymedUrl}`,
+    ].join('\n');
+
+    const html = `<p>Hi ${firstName},</p>
+      <p>We're thrilled to help you start your health journey! Your account at <a href="${joeymedUrl}">Joeymed</a> is ready to go.</p>
+      <p><strong>Your Login Credentials:</strong></p>
+      <p><strong>Email:</strong> ${email}<br/>
+      <strong>Password:</strong> ${password}</p>
+      <p>If you have any questions or just need a bit of support, we're always here to help!</p>
+      <p>To your health,</p>
+      <p>The Joeymed Team <a href="${joeymedUrl}">${joeymedUrl}</a></p>`;
+
+    await this.safeSendMail({
+      to: email,
+      subject,
+      text,
+      html,
+    });
+  }
+
   private async safeSendMail(
     options: Parameters<MailerService['sendMail']>[0],
   ) {

@@ -49,6 +49,26 @@ export interface Configuration {
     useSSL: boolean;
     publicBaseUrl?: string;
   };
+  shipping: {
+    fedex: {
+      baseUrl: string;
+      apiKey: string;
+      apiSecret: string;
+      useMock: boolean;
+    };
+  };
+  groupon: {
+    baseUrl: string;
+    configName: string;
+    clientId: string;
+    apiKey: string;
+    nonce: string;
+    reservationTtlMs: number;
+    retryMax: number;
+    retryBackoffMs: number;
+    reconciliationEnabled: boolean;
+    useMock: boolean;
+  };
 }
 
 export default (): Configuration => ({
@@ -96,8 +116,7 @@ export default (): Configuration => ({
     promEnabled: process.env.PROM_ENABLED !== 'false',
   },
   objectStorage: {
-    driver:
-      (process.env.OBJECT_STORAGE_DRIVER as 'minio' | 's3') || 'minio',
+    driver: (process.env.OBJECT_STORAGE_DRIVER as 'minio' | 's3') || 'minio',
     endpoint: process.env.OBJECT_STORAGE_ENDPOINT || 'http://localhost:9000',
     region: process.env.OBJECT_STORAGE_REGION || 'us-east-1',
     bucket: process.env.OBJECT_STORAGE_BUCKET || 'weight-loss-media',
@@ -107,5 +126,32 @@ export default (): Configuration => ({
     useSSL: process.env.OBJECT_STORAGE_USE_SSL === 'true',
     publicBaseUrl:
       process.env.OBJECT_STORAGE_PUBLIC_BASE_URL?.trim() || undefined,
+  },
+  shipping: {
+    fedex: {
+      baseUrl:
+        process.env.FEDEX_API_BASE_URL ||
+        'https://api.fedex.com/track/v1/shipments',
+      apiKey: process.env.FEDEX_API_KEY || 'replace-with-fedex-api-key',
+      apiSecret: process.env.FEDEX_API_SECRET || 'replace-with-fedex-secret',
+      useMock: process.env.FEDEX_USE_MOCK !== 'false',
+    },
+  },
+  groupon: {
+    baseUrl:
+      process.env.GROUPON_BASE_URL || 'https://offer-api.groupon.com/partners',
+    configName: process.env.GROUPON_CONFIG_NAME || 'joey-med-preprod',
+    clientId: process.env.GROUPON_CLIENT_ID || '',
+    apiKey: process.env.GROUPON_API_KEY || '',
+    nonce: process.env.GROUPON_NONCE || '',
+    reservationTtlMs: parseInt(
+      process.env.GROUPON_RESERVATION_TTL_MS || '900000',
+      10,
+    ), // 15m default
+    retryMax: parseInt(process.env.GROUPON_RETRY_MAX || '3', 10),
+    retryBackoffMs: parseInt(process.env.GROUPON_RETRY_BACKOFF_MS || '250', 10),
+    reconciliationEnabled:
+      process.env.GROUPON_RECONCILIATION_ENABLED !== 'false',
+    useMock: process.env.GROUPON_USE_MOCK === 'true',
   },
 });

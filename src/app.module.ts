@@ -13,6 +13,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { HealthModule } from './modules/health/health.module';
 import { BlogsModule } from './modules/blogs';
 import { ProductsModule } from './modules/products';
+import { GrouponModule } from './modules/groupon/groupon.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import type { Request } from 'express';
@@ -107,6 +108,7 @@ import type { Request } from 'express';
     AdminModule,
     BlogsModule,
     ProductsModule,
+    GrouponModule,
   ],
   controllers: [AppController],
   providers: [

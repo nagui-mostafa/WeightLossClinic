@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -28,6 +29,11 @@ import { CurrentUser } from '../../common';
 import type { AuthenticatedUser } from '../../auth/interfaces/request-with-user.interface';
 import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
 import { RequestContext } from '../../common/interfaces/request-context.interface';
+import {
+  RecordTrackingBatchRequestDto,
+  RecordTrackingBatchResponseDto,
+  RecordTrackingDetailsDto,
+} from '../dto/record-tracking.dto';
 
 @ApiTags('records')
 @ApiBearerAuth('JWT-auth')
@@ -108,6 +114,27 @@ export class RecordsController {
       id,
       this.toRequestContext(request, user.id),
     );
+  }
+
+  @Get(':id/tracking')
+  @ApiOperation({ summary: 'Get tracking details for a record' })
+  @ApiOkResponse({ type: RecordTrackingDetailsDto })
+  async getRecordTracking(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<RecordTrackingDetailsDto> {
+    return this.recordsService.getRecordTracking(this.toActor(user), id);
+  }
+
+  @Post('tracking')
+  @ApiOperation({ summary: 'Get tracking details for multiple records' })
+  @ApiOkResponse({ type: RecordTrackingBatchResponseDto })
+  @ApiBody({ type: RecordTrackingBatchRequestDto })
+  async getRecordsTracking(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RecordTrackingBatchRequestDto,
+  ): Promise<RecordTrackingBatchResponseDto> {
+    return this.recordsService.getRecordsTracking(this.toActor(user), dto);
   }
 
   private toActor(user: AuthenticatedUser) {

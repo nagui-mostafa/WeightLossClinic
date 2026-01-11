@@ -13,6 +13,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
 import { Public, Roles, RolesGuard } from '../common';
@@ -46,6 +47,7 @@ export class BlogsController {
   @ApiOperation({ summary: 'Create a new blog (admin only)' })
   @ApiCreatedResponse({ type: BlogResponseDto })
   @ApiBearerAuth('JWT-auth')
+  @ApiSecurity('AdminApiKey')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   create(@Body() dto: CreateBlogDto): Promise<BlogResponseDto> {
@@ -56,6 +58,7 @@ export class BlogsController {
   @ApiOperation({ summary: 'Replace a blog by token (admin only)' })
   @ApiOkResponse({ type: BlogResponseDto })
   @ApiBearerAuth('JWT-auth')
+  @ApiSecurity('AdminApiKey')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   update(
@@ -68,6 +71,7 @@ export class BlogsController {
   @Delete(':token')
   @ApiOperation({ summary: 'Delete a blog by token (admin only)' })
   @ApiBearerAuth('JWT-auth')
+  @ApiSecurity('AdminApiKey')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   async remove(@Param('token') token: string): Promise<void> {

@@ -10,4 +10,3 @@ import { CommonModule } from '../common';
   exports: [BlogsService],
 })
 export class BlogsModule {}
-

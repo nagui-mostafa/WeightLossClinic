@@ -3,6 +3,8 @@
 /node_modules
 /mini-admin/node_modules
 /build
+/mini-admin
+/GrouponInfo
 
 # Logs
 logs

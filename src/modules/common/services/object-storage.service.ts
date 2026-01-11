@@ -39,12 +39,16 @@ export class ObjectStorageService {
     return trimmed.replace(/^\/+/, '');
   }
 
-  getPublicUrl(objectKey?: string | null, bucket?: string | null): string | null {
+  getPublicUrl(
+    objectKey?: string | null,
+    bucket?: string | null,
+  ): string | null {
     const normalizedKey = this.normalizeObjectKey(objectKey);
     if (!normalizedKey) {
       return null;
     }
-    const targetBucket = this.normalizeBucket(bucket) ?? this.getDefaultBucket();
+    const targetBucket =
+      this.normalizeBucket(bucket) ?? this.getDefaultBucket();
     const baseUrl = this.buildBaseUrl(targetBucket);
     if (!baseUrl) {
       return `/${targetBucket}/${normalizedKey}`;
@@ -59,7 +63,8 @@ export class ObjectStorageService {
     contentType?: string;
     metadata?: Record<string, string>;
   }): Promise<{ bucket: string; objectKey: string }> {
-    const bucketName = this.normalizeBucket(options.bucket) ?? this.getDefaultBucket();
+    const bucketName =
+      this.normalizeBucket(options.bucket) ?? this.getDefaultBucket();
     const normalizedKey = this.normalizeObjectKey(options.objectKey);
 
     if (!normalizedKey) {
@@ -76,7 +81,9 @@ export class ObjectStorageService {
       }),
     );
 
-    this.logger.debug(`Uploaded object ${normalizedKey} to bucket ${bucketName}`);
+    this.logger.debug(
+      `Uploaded object ${normalizedKey} to bucket ${bucketName}`,
+    );
 
     return { bucket: bucketName, objectKey: normalizedKey };
   }

@@ -32,4 +32,3 @@ export class BlogResponseDto {
   @ApiProperty({ example: '2025-10-30T18:30:00.000Z' })
   updatedAt!: string;
 }
-

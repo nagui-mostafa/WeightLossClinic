@@ -17,6 +17,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
@@ -29,26 +30,43 @@ import {
   CreateWeightLossProductDto,
   UpdateWeightLossProductDto,
 } from './dto/create-product.dto';
-import { ProductResponseDto } from './dto/product-response.dto';
+import {
+  CategoryResponseDto,
+  ProductResponseDto,
+} from './dto/product-response.dto';
 
-@ApiTags('weight-loss-products')
-@Controller('weight-loss-products')
+@ApiTags('products')
+@Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  @Get()
+  @Get('categories')
   @Public()
-  @ApiOperation({ summary: 'List all weight-loss products (public)' })
-  @ApiOkResponse({ type: [ProductResponseDto] })
-  list(): Promise<ProductResponseDto[]> {
-    return this.productsService.findAll();
+  @ApiOperation({ summary: 'List categories with products (public)' })
+  @ApiOkResponse({ type: [CategoryResponseDto] })
+  categories(): Promise<CategoryResponseDto[]> {
+    return this.productsService.categories();
   }
 
-  @Get(':token')
+  @Get(':categorySlug')
+  @Public()
+  @ApiOperation({ summary: 'List products by category slug (public)' })
+  @ApiOkResponse({ type: [ProductResponseDto] })
+  listByCategory(
+    @Param('categorySlug') categorySlug: string,
+  ): Promise<ProductResponseDto[]> {
+    return this.productsService.listByCategorySlug(categorySlug);
+  }
+
+  @Get(':categorySlug/:token')
   @Public()
   @ApiOperation({ summary: 'Get a product by token (public)' })
   @ApiOkResponse({ type: ProductResponseDto })
-  getByToken(@Param('token') token: string): Promise<ProductResponseDto> {
+  getByToken(
+    @Param('categorySlug') categorySlug: string,
+    @Param('token') token: string,
+  ): Promise<ProductResponseDto> {
+    // categorySlug is currently used for routing clarity; token lookup is global
     return this.productsService.findByToken(token);
   }
 
@@ -56,11 +74,10 @@ export class ProductsController {
   @ApiOperation({ summary: 'Create a new product (admin only)' })
   @ApiCreatedResponse({ type: ProductResponseDto })
   @ApiBearerAuth('JWT-auth')
+  @ApiSecurity('AdminApiKey')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
-  create(
-    @Body() dto: CreateWeightLossProductDto,
-  ): Promise<ProductResponseDto> {
+  create(@Body() dto: CreateWeightLossProductDto): Promise<ProductResponseDto> {
     return this.productsService.create(dto);
   }
 
@@ -69,6 +86,7 @@ export class ProductsController {
   @ApiOperation({ summary: 'Update a product by token (admin only)' })
   @ApiOkResponse({ type: ProductResponseDto })
   @ApiBearerAuth('JWT-auth')
+  @ApiSecurity('AdminApiKey')
   @UseGuards(RolesGuard)
   @UseInterceptors(
     AnyFilesInterceptor({
@@ -117,6 +135,7 @@ export class ProductsController {
   @Delete(':token')
   @ApiOperation({ summary: 'Delete a product by token (admin only)' })
   @ApiBearerAuth('JWT-auth')
+  @ApiSecurity('AdminApiKey')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   remove(@Param('token') token: string): Promise<void> {

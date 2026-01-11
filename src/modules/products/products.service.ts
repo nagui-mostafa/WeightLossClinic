@@ -1,5 +1,10 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { Prisma, WeightLossProduct } from '@prisma/client';
+import {
+  Injectable,
+  NotFoundException,
+  Logger,
+  BadRequestException,
+} from '@nestjs/common';
+import { Prisma, ProductCategory, WeightLossProduct } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
 import type { File as MulterFile } from 'multer';
@@ -17,6 +22,7 @@ import {
 import {
   ProductResponseDto,
   ProductImageResponseDto,
+  CategoryResponseDto,
 } from './dto/product-response.dto';
 import {
   ProductFaq,
@@ -38,13 +44,18 @@ export class ProductsService {
 
   async create(dto: CreateWeightLossProductDto): Promise<ProductResponseDto> {
     const token = this.normalizeIdentifier(dto.token);
-    const payload = this.buildCreateData(dto, token);
-    const created = await this.prisma.weightLossProduct.create({ data: payload });
+    const category = this.normalizeCategory(dto.category);
+    const payload = this.buildCreateData(dto, token, category);
+    const created = await this.prisma.weightLossProduct.create({
+      data: payload,
+    });
     return this.toResponse(created);
   }
 
-  async findAll(): Promise<ProductResponseDto[]> {
-    const products = await this.prisma.weightLossProduct.findMany();
+  async findAll(category?: ProductCategory): Promise<ProductResponseDto[]> {
+    const products = await this.prisma.weightLossProduct.findMany({
+      where: category ? { category } : undefined,
+    });
     const sorted = products.sort((a, b) => {
       const orderDelta = this.getDisplayOrder(a) - this.getDisplayOrder(b);
       if (orderDelta !== 0) {
@@ -80,12 +91,18 @@ export class ProductsService {
     }
 
     try {
+      const existingImages = this.parseImages(existing.images);
       const dtoWithUploads = await this.applyUploadedAssets(
         normalizedToken,
+        existing.category,
         dto,
         files,
       );
-      const payload = this.buildUpdateData(dtoWithUploads);
+      const sanitizedDto = this.sanitizeImageUpdates(
+        dtoWithUploads,
+        existingImages,
+      );
+      const payload = this.buildUpdateData(sanitizedDto);
       const updated = await this.prisma.weightLossProduct.update({
         where: { token: normalizedToken },
         data: payload,
@@ -108,11 +125,46 @@ export class ProductsService {
     if (!existing) {
       throw new NotFoundException('Product not found');
     }
-    await this.prisma.weightLossProduct.delete({ where: { token: normalizedToken } });
+    await this.prisma.weightLossProduct.delete({
+      where: { token: normalizedToken },
+    });
+  }
+
+  async listByCategorySlug(slug: string): Promise<ProductResponseDto[]> {
+    const category = this.categoryFromSlug(slug);
+    return this.findAll(category);
+  }
+
+  async categories(): Promise<CategoryResponseDto[]> {
+    const products = await this.prisma.weightLossProduct.findMany();
+    const grouped: Record<ProductCategory, WeightLossProduct[]> = {
+      [ProductCategory.WEIGHT_LOSS]: [],
+      [ProductCategory.SEXUAL_HEALTH]: [],
+      [ProductCategory.WELLNESS]: [],
+    };
+
+    for (const product of products) {
+      grouped[product.category]?.push(product);
+    }
+
+    const order: ProductCategory[] = [
+      ProductCategory.WEIGHT_LOSS,
+      ProductCategory.SEXUAL_HEALTH,
+      ProductCategory.WELLNESS,
+    ];
+
+    return order.map((category) => ({
+      label: this.categoryLabel(category),
+      slug: this.categorySlug(category),
+      products: this.sortProducts(grouped[category]).map((p) =>
+        this.toResponse(p),
+      ),
+    }));
   }
 
   private async applyUploadedAssets(
     token: string,
+    category: ProductCategory,
     dto: UpdateWeightLossProductDto,
     files: MulterFile[],
   ): Promise<UpdateWeightLossProductDto> {
@@ -135,6 +187,7 @@ export class ProductsService {
           }
           const uploadResult = await this.uploadProductImage(
             token,
+            category,
             image,
             selectedFile,
           );
@@ -165,6 +218,7 @@ export class ProductsService {
           }
           const uploadResult = await this.uploadWhyChooseImage(
             token,
+            category,
             item,
             index,
             file,
@@ -185,8 +239,80 @@ export class ProductsService {
     return updatedDto;
   }
 
+  private sanitizeImageUpdates(
+    dto: UpdateWeightLossProductDto,
+    existingImages: ProductImageData[],
+  ): UpdateWeightLossProductDto {
+    if (!dto?.images) {
+      return dto;
+    }
+
+    const existingMap = new Map(existingImages.map((img) => [img.id, img]));
+
+    const sanitizedImages = dto.images.map((image) => {
+      if (image.uploadField) {
+        return image;
+      }
+
+      const incomingKey = this.objectStorage.normalizeObjectKey(
+        image.objectKey,
+      );
+      const normalizedBucket = this.normalizeOptionalString(image.bucket);
+      const sanitized: ProductImageUpdateDto = { ...image };
+
+      if (!image.id) {
+        if (incomingKey || normalizedBucket) {
+          throw new BadRequestException(
+            'objectKey and bucket are read-only. Upload a file to generate a storage key.',
+          );
+        }
+        delete sanitized.objectKey;
+        delete sanitized.bucket;
+        return sanitized;
+      }
+
+      const existing = existingMap.get(image.id);
+      if (!existing) {
+        if (incomingKey || normalizedBucket) {
+          throw new BadRequestException(
+            'objectKey and bucket are read-only. Upload a file to generate a storage key.',
+          );
+        }
+        delete sanitized.objectKey;
+        delete sanitized.bucket;
+        return sanitized;
+      }
+
+      const existingKey = this.objectStorage.normalizeObjectKey(
+        existing.objectKey,
+      );
+      if (incomingKey && incomingKey !== existingKey) {
+        throw new BadRequestException(
+          'objectKey is read-only. Upload a replacement image to change it.',
+        );
+      }
+
+      const existingBucket = this.normalizeOptionalString(existing.bucket);
+      if (normalizedBucket && normalizedBucket !== existingBucket) {
+        throw new BadRequestException(
+          'bucket is read-only. Upload a replacement image to change it.',
+        );
+      }
+
+      sanitized.bucket = existing.bucket ?? undefined;
+      sanitized.objectKey = existing.objectKey ?? undefined;
+      return sanitized;
+    });
+
+    return {
+      ...dto,
+      images: sanitizedImages,
+    };
+  }
+
   private async uploadProductImage(
     productToken: string,
+    category: ProductCategory,
     image: ProductImageUpdateDto,
     file: MulterFile,
   ): Promise<{ bucket: string; objectKey: string; url: string | null }> {
@@ -204,8 +330,9 @@ export class ProductsService {
     const providedKey = image.uploadField
       ? null
       : this.objectStorage.normalizeObjectKey(image.objectKey);
-    const generatedKey = `weight-loss/products/${safeToken}/${baseId}${extension}`;
-    const objectKey = providedKey ?? this.objectStorage.normalizeObjectKey(generatedKey);
+    const generatedKey = `${this.categorySlug(category).replace(/\//g, '')}/products/${safeToken}/${baseId}${extension}`;
+    const objectKey =
+      providedKey ?? this.objectStorage.normalizeObjectKey(generatedKey);
 
     if (!objectKey) {
       throw new Error('Failed to generate object key for uploaded image');
@@ -235,6 +362,7 @@ export class ProductsService {
 
   private async uploadWhyChooseImage(
     productToken: string,
+    category: ProductCategory,
     item: ProductWhyChooseDto,
     index: number,
     file: MulterFile,
@@ -246,14 +374,15 @@ export class ProductsService {
     const bucket = this.objectStorage.getDefaultBucket();
     const extension = this.resolveFileExtension(file);
     const safeToken = this.normalizeIdentifier(productToken);
-    const rawTitle = this.normalizeOptionalString(item.title) ?? `why-${index + 1}`;
+    const rawTitle =
+      this.normalizeOptionalString(item.title) ?? `why-${index + 1}`;
     const titleSlug =
       rawTitle
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '') || `why-${index + 1}`;
     const slug = `${titleSlug}-${randomUUID()}`;
-    const rawKey = `weight-loss/products/${safeToken}/why-choose/${slug}${extension}`;
+    const rawKey = `${this.categorySlug(category).replace(/\//g, '')}/products/${safeToken}/why-choose/${slug}${extension}`;
     const objectKey = this.objectStorage.normalizeObjectKey(rawKey);
 
     if (!objectKey) {
@@ -303,9 +432,11 @@ export class ProductsService {
   private buildCreateData(
     dto: CreateWeightLossProductDto,
     token: string,
+    category: ProductCategory,
   ): Prisma.WeightLossProductCreateInput {
     return {
       token,
+      category,
       name: this.normalizeRequiredString(dto.name),
       href: this.normalizeRequiredString(dto.href),
       hrefForm: this.normalizeOptionalString(dto.hrefForm),
@@ -333,6 +464,9 @@ export class ProductsService {
   ): Prisma.WeightLossProductUpdateInput {
     const payload: Prisma.WeightLossProductUpdateInput = {};
 
+    if (dto.category !== undefined) {
+      payload.category = this.normalizeCategory(dto.category);
+    }
     if (dto.name !== undefined) {
       payload.name = this.normalizeRequiredString(dto.name);
     }
@@ -373,7 +507,9 @@ export class ProductsService {
       payload.features = this.normalizeStringArray(dto.features);
     }
     if (dto.whyChoose !== undefined) {
-      payload.whyChoose = this.toJsonValue(this.normalizeWhyChoose(dto.whyChoose));
+      payload.whyChoose = this.toJsonValue(
+        this.normalizeWhyChoose(dto.whyChoose),
+      );
     }
     if (dto.plan !== undefined) {
       payload.plan = this.toJsonValue(this.normalizePlan(dto.plan));
@@ -382,7 +518,9 @@ export class ProductsService {
       payload.question = this.toJsonValue(this.normalizeFaqs(dto.question));
     }
     if (dto.howItWorks !== undefined) {
-      payload.howItWorks = this.toJsonValue(this.normalizeSteps(dto.howItWorks));
+      payload.howItWorks = this.toJsonValue(
+        this.normalizeSteps(dto.howItWorks),
+      );
     }
     if (dto.images !== undefined) {
       payload.images = this.toJsonValue(this.normalizeImages(dto.images));
@@ -404,7 +542,10 @@ export class ProductsService {
 
     const imageResponses: ProductImageResponseDto[] = images.map((image) => {
       const url =
-        this.objectStorage.getPublicUrl(image.objectKey ?? undefined, image.bucket) ??
+        this.objectStorage.getPublicUrl(
+          image.objectKey ?? undefined,
+          image.bucket,
+        ) ??
         image.fallbackUrl ??
         null;
       return {
@@ -422,6 +563,8 @@ export class ProductsService {
     return {
       id: product.id,
       token: product.token,
+      category: product.category,
+      categorySlug: this.categorySlug(product.category),
       name: product.name,
       href: product.href,
       hrefForm: product.hrefForm,
@@ -444,6 +587,59 @@ export class ProductsService {
       createdAt: product.createdAt.toISOString(),
       updatedAt: product.updatedAt.toISOString(),
     };
+  }
+
+  private categorySlug(category: ProductCategory): string {
+    switch (category) {
+      case ProductCategory.WEIGHT_LOSS:
+        return '/weight-loss';
+      case ProductCategory.SEXUAL_HEALTH:
+        return '/sexual-health';
+      case ProductCategory.WELLNESS:
+        return '/wellness';
+      default:
+        return '/weight-loss';
+    }
+  }
+
+  private categoryLabel(category: ProductCategory): string {
+    switch (category) {
+      case ProductCategory.WEIGHT_LOSS:
+        return 'Weight Loss';
+      case ProductCategory.SEXUAL_HEALTH:
+        return 'Sexual Health';
+      case ProductCategory.WELLNESS:
+        return 'Wellness';
+      default:
+        return 'Weight Loss';
+    }
+  }
+
+  private categoryFromSlug(slug: string): ProductCategory {
+    const normalized = (slug || '').replace(/^\/+/, '').toLowerCase();
+    if (normalized.startsWith('weight-loss')) {
+      return ProductCategory.WEIGHT_LOSS;
+    }
+    if (normalized.startsWith('sexual-health')) {
+      return ProductCategory.SEXUAL_HEALTH;
+    }
+    if (normalized.startsWith('wellness')) {
+      return ProductCategory.WELLNESS;
+    }
+    throw new BadRequestException('Unknown category');
+  }
+
+  private normalizeCategory(
+    category: ProductCategory | string,
+  ): ProductCategory {
+    if (typeof category === 'string') {
+      const upper = category.toUpperCase();
+      if ((Object.values(ProductCategory) as string[]).includes(upper)) {
+        return upper as ProductCategory;
+      }
+      return this.categoryFromSlug(category);
+    }
+    return category;
   }
 
   private normalizeIdentifier(value: string): string {
@@ -492,8 +688,10 @@ export class ProductsService {
     }
     const results: ProductPlanOption[] = [];
     plan.forEach((option, index) => {
-      const id = this.normalizeOptionalString(option?.id) ?? `plan-${index + 1}`;
-      const title = this.normalizeOptionalString(option?.title) ?? `Plan ${index + 1}`;
+      const id =
+        this.normalizeOptionalString(option?.id) ?? `plan-${index + 1}`;
+      const title =
+        this.normalizeOptionalString(option?.title) ?? `Plan ${index + 1}`;
       if (!title) {
         return;
       }
@@ -519,12 +717,15 @@ export class ProductsService {
       return [];
     }
     return question.map((faq, index) => ({
-      title: this.normalizeOptionalString(faq?.title) ?? `Question ${index + 1}`,
+      title:
+        this.normalizeOptionalString(faq?.title) ?? `Question ${index + 1}`,
       description: this.normalizeOptionalString(faq?.description) ?? '',
     }));
   }
 
-  private normalizeWhyChoose(whyChoose?: ProductWhyChooseDto[]): ProductWhyChoose[] {
+  private normalizeWhyChoose(
+    whyChoose?: ProductWhyChooseDto[],
+  ): ProductWhyChoose[] {
     if (!Array.isArray(whyChoose)) {
       return [];
     }
@@ -535,7 +736,9 @@ export class ProductsService {
     }));
   }
 
-  private normalizeSteps(steps?: ProductHowItWorksStepDto[]): ProductHowItWorksStep[] {
+  private normalizeSteps(
+    steps?: ProductHowItWorksStepDto[],
+  ): ProductHowItWorksStep[] {
     if (!Array.isArray(steps)) {
       return [];
     }
@@ -571,8 +774,7 @@ export class ProductsService {
         altText: this.normalizeOptionalString(imageData?.altText) ?? undefined,
         fallbackUrl: fallbackUrl ?? undefined,
         variant: this.normalizeOptionalString(imageData?.variant) ?? undefined,
-        metadata:
-          (imageData?.metadata as Record<string, unknown> | undefined) ?? null,
+        metadata: imageData?.metadata ?? null,
       });
     });
     return results;
@@ -588,7 +790,8 @@ export class ProductsService {
         return;
       }
       const raw = item as Record<string, unknown>;
-      const id = this.normalizeOptionalString(raw.id as string) ?? `plan-${index + 1}`;
+      const id =
+        this.normalizeOptionalString(raw.id as string) ?? `plan-${index + 1}`;
       const title = this.normalizeOptionalString(raw.title as string) ?? '';
       if (!title) {
         return;
@@ -602,7 +805,8 @@ export class ProductsService {
           oldPrice = parsed;
         }
       }
-      const href = this.normalizeOptionalString(raw.href as string) ?? undefined;
+      const href =
+        this.normalizeOptionalString(raw.href as string) ?? undefined;
       results.push({ id, title, price, oldPrice, href });
     });
     return results;
@@ -619,8 +823,11 @@ export class ProductsService {
         }
         const raw = item as Record<string, unknown>;
         return {
-          title: this.normalizeOptionalString(raw.title as string) ?? `Question ${index + 1}`,
-          description: this.normalizeOptionalString(raw.description as string) ?? '',
+          title:
+            this.normalizeOptionalString(raw.title as string) ??
+            `Question ${index + 1}`,
+          description:
+            this.normalizeOptionalString(raw.description as string) ?? '',
         };
       })
       .filter((faq): faq is ProductFaq => Boolean(faq));
@@ -657,8 +864,11 @@ export class ProductsService {
         const raw = item as Record<string, unknown>;
         return {
           step: Number(raw.step ?? index + 1),
-          title: this.normalizeOptionalString(raw.title as string) ?? `Step ${index + 1}`,
-          description: this.normalizeOptionalString(raw.description as string) ?? '',
+          title:
+            this.normalizeOptionalString(raw.title as string) ??
+            `Step ${index + 1}`,
+          description:
+            this.normalizeOptionalString(raw.description as string) ?? '',
         };
       })
       .filter((step): step is ProductHowItWorksStep => Boolean(step));
@@ -674,12 +884,17 @@ export class ProductsService {
           return null;
         }
         const raw = item as Record<string, unknown>;
-        const id = this.normalizeOptionalString(raw.id as string) ?? `image-${index + 1}`;
+        const id =
+          this.normalizeOptionalString(raw.id as string) ??
+          `image-${index + 1}`;
         const objectKey = this.normalizeOptionalString(raw.objectKey as string);
         const bucket = this.normalizeOptionalString(raw.bucket as string);
-        const altText = this.normalizeOptionalString(raw.altText as string) ?? undefined;
-        const fallbackUrl = this.normalizeOptionalString(raw.fallbackUrl as string) ?? undefined;
-        const variant = this.normalizeOptionalString(raw.variant as string) ?? undefined;
+        const altText =
+          this.normalizeOptionalString(raw.altText as string) ?? undefined;
+        const fallbackUrl =
+          this.normalizeOptionalString(raw.fallbackUrl as string) ?? undefined;
+        const variant =
+          this.normalizeOptionalString(raw.variant as string) ?? undefined;
         const metadata = this.parseMetadata(raw.metadata as Prisma.JsonValue);
         if (!objectKey && !fallbackUrl) {
           return null;
@@ -706,7 +921,7 @@ export class ProductsService {
 
   private getDisplayOrder(product: WeightLossProduct): number {
     const metadata = this.parseMetadata(product.metadata);
-    const orderValue = metadata ? (metadata['displayOrder'] as unknown) : undefined;
+    const orderValue = metadata ? metadata['displayOrder'] : undefined;
     if (typeof orderValue === 'number' && Number.isFinite(orderValue)) {
       return orderValue;
     }
@@ -717,6 +932,16 @@ export class ProductsService {
       }
     }
     return Number.MAX_SAFE_INTEGER;
+  }
+
+  private sortProducts(products: WeightLossProduct[]): WeightLossProduct[] {
+    return [...products].sort((a, b) => {
+      const orderDelta = this.getDisplayOrder(a) - this.getDisplayOrder(b);
+      if (orderDelta !== 0) {
+        return orderDelta;
+      }
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
   }
 
   private toJsonValue(value?: unknown): Prisma.InputJsonValue | undefined {

@@ -5,11 +5,14 @@ import {
   Prisma,
   PrismaClient,
   Role,
+  ProductCategory,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 const DEFAULT_PASSWORD = '12345678';
+const PLACEHOLDER_PRODUCT_IMAGE = 'https://placehold.co/800x600?text=Product';
+const PLACEHOLDER_BENEFIT_IMAGE = 'https://placehold.co/400x400?text=Benefit';
 
 type SnapshotSeed = {
   currentWeightLbs: number;
@@ -28,6 +31,7 @@ type RecordSeed = {
   purchasedAt: string;
   renewalDate: string;
   notes: string;
+  trackingNumber?: string | null;
 };
 
 type ShotSeed = {
@@ -83,7 +87,7 @@ type ProductFaqSeed = {
 type ProductWhyChooseSeed = {
   title: string;
   excerpt: string;
-  imgSrc: string;
+  imgSrc?: string;
 };
 
 type ProductHowItWorksSeed = {
@@ -93,9 +97,9 @@ type ProductHowItWorksSeed = {
 };
 
 type ProductImageSeed = {
-  id: string;
+  id?: string;
   bucket?: string;
-  objectKey: string;
+  objectKey?: string;
   altText?: string;
   fallbackUrl?: string;
   variant?: string;
@@ -103,6 +107,7 @@ type ProductImageSeed = {
 
 type WeightLossProductSeed = {
   token: string;
+  category: ProductCategory;
   href: string;
   hrefForm?: string;
   name: string;
@@ -148,6 +153,10 @@ type PatientSeed = {
   records: RecordSeed[];
   shots: ShotSeed[];
   activities: ActivitySeed[];
+  /** Optional override for how many synthetic records to create per patient. */
+  recordSeriesCount?: number;
+  /** Skip auto-adjusting the most recent records to fall within renewal reminder windows. */
+  skipRecordAdjustments?: boolean;
 };
 
 const patientSeeds: PatientSeed[] = [
@@ -1094,6 +1103,79 @@ const patientSeeds: PatientSeed[] = [
       },
     ],
   },
+  {
+    profile: {
+      firstName: 'Nora',
+      lastName: 'Walsh',
+      email: 'nora.walsh@example.com',
+      phone: '+1 (555) 010-2010',
+      avatarUrl: 'https://i.pravatar.cc/150?img=11',
+    },    shipping: {
+      fullName: 'Nora Walsh',
+      address1: '741 Cedar Street',
+      city: 'Portland',
+      state: 'OR',
+      postalCode: '97205',
+      country: 'USA',
+      phone: '+1 (555) 010-2010',
+    },
+    snapshot: {
+      currentWeightLbs: 188,
+      goalWeightLbs: 165,
+      medicationType: 'Lifestyle',
+      dose: { name: 'Wellness plan', value: 0, unit: 'unit' },
+      nextAppointment: {
+        id: 'apt_nora_2026_01_10',
+        startsAt: '2026-01-10T15:00:00.000Z',
+      },
+    },
+    records: [],
+    shots: [],
+    activities: [],
+  },
+  {
+    profile: {
+      firstName: 'Omar',
+      lastName: 'Singh',
+      email: 'omar.singh@example.com',
+      phone: '+1 (555) 010-2011',
+      avatarUrl: 'https://i.pravatar.cc/150?img=12',
+    },    shipping: {
+      fullName: 'Omar Singh',
+      address1: '52 Meadowbrook Rd',
+      city: 'Dallas',
+      state: 'TX',
+      postalCode: '75201',
+      country: 'USA',
+      phone: '+1 (555) 010-2011',
+    },
+    snapshot: {
+      currentWeightLbs: 205,
+      goalWeightLbs: 180,
+      medicationType: 'Semaglutide',
+      dose: { name: 'Semaglutide', value: 0.5, unit: 'mg' },
+      nextAppointment: {
+        id: 'apt_omar_2026_02_15',
+        startsAt: '2026-02-15T18:30:00.000Z',
+      },
+    },
+    records: [
+      {
+        id: 'rec_omar_1',
+        medication: 'Semaglutide',
+        medicationType: MedicationType.INJECTABLE,
+        startDate: '2025-03-01T00:00:00.000Z',
+        endDate: '2025-05-01T00:00:00.000Z',
+        purchasedAt: '2025-03-01T10:00:00.000Z',
+        renewalDate: '2025-05-01T00:00:00.000Z',
+        notes: 'Completed plan before relocating out of state.',
+      },
+    ],
+    shots: [],
+    activities: [],
+    recordSeriesCount: 1,
+    skipRecordAdjustments: true,
+  },
 ];
 
 const blogSeeds: BlogSeed[] = [
@@ -1133,9 +1215,10 @@ const blogSeeds: BlogSeed[] = [
   },
 ];
 
-const weightLossProductSeeds: WeightLossProductSeed[] = [
+const productSeeds: WeightLossProductSeed[] = [
   {
     token: 'glp1-core-plan',
+    category: ProductCategory.WEIGHT_LOSS,
     href: '/weight-loss/glp1-core-plan',
     hrefForm: 'wLinkForm',
     name: 'GLP-1 Core — Injection',
@@ -1265,6 +1348,7 @@ const weightLossProductSeeds: WeightLossProductSeed[] = [
   },
   {
     token: 'glp1-plus-core-plan',
+    category: ProductCategory.WEIGHT_LOSS,
     href: '/weight-loss/glp1-plus-core-plan',
     hrefForm: 'wLinkForm',
     name: 'GLP-1 Plus Core — Injection',
@@ -1384,6 +1468,7 @@ const weightLossProductSeeds: WeightLossProductSeed[] = [
   },
   {
     token: 'lipo-mic-ultraburn',
+    category: ProductCategory.WEIGHT_LOSS,
     href: '/weight-loss/lipo-mic-ultraburn',
     hrefForm: 'wLinkForm',
     name: 'Lipo MIC UltraBurn — Injection',
@@ -1493,6 +1578,512 @@ const weightLossProductSeeds: WeightLossProductSeed[] = [
       displayOrder: 3,
     },
   },
+  {
+    token: 'womens-vitality-pt-141-blend',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/womens-vitality-pt-141-blend',
+    hrefForm: 'sLinkForm',
+    name: 'Joey Med Women’s Vitality (PT-141 Blend) — RDT/SL Tab',
+    oldPrice: 169,
+    price: 129,
+    popular: true,
+    inStock: true,
+    badge: 'Fast-acting, sublingual convenience',
+    description:
+      'A PT-141–based rapid-dissolve/sublingual blend designed to support female libido and intimacy.',
+    features: [
+      'Sublingual format for quicker onset',
+      'Targets desire and arousal pathways',
+      'Clinically used peptide base (PT-141) with supportive actives',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Place one tablet under the tongue and allow it to dissolve as directed by your provider. Do not exceed the prescribed dose.',
+    sideEffects:
+      'May include nausea, flushing, or headache. These effects are typically mild and temporary. Seek help if symptoms are severe or persistent.',
+    whyChoose: [
+      { title: 'Targeted support', excerpt: 'Formulated to enhance desire and arousal' },
+      { title: 'Fast onset', excerpt: 'Sublingual route for speed and convenience' },
+      { title: 'Discreet use', excerpt: 'Small, easy-to-take tabs' },
+    ],
+    plan: [
+      { id: 'sv-1', title: 'Single Pack', price: 129, oldPrice: 169, href: '#' },
+    ],
+    question: [
+      { title: 'What is this blend?', description: 'A compounded PT-141–based formula designed to support women’s libido and intimacy.' },
+      { title: 'How do I take it?', description: 'Let one RDT/SL tab dissolve under the tongue as directed by your provider.' },
+      { title: 'What are the side effects?', description: 'Possible nausea, flushing, or headache. Contact your provider if severe.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Dissolve under tongue', description: 'Use as prescribed for best results.' },
+      { step: 2, title: 'Allow absorption', description: 'Sublingual route helps faster uptake.' },
+      { step: 3, title: 'Feel the support', description: 'Designed to enhance desire and intimacy.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 1 },
+  },
+  {
+    token: 'mens-vitality-performance-blend',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/mens-vitality-performance-blend',
+    hrefForm: 'sLinkForm',
+    name: 'Joey Med Men’s Vitality (Performance Blend) — Troche/SL',
+    oldPrice: 169,
+    price: 129,
+    popular: true,
+    inStock: true,
+    badge: 'Formulated for performance & confidence',
+    description:
+      'A compounded performance blend in troche/SL format to support sexual performance and stamina.',
+    features: [
+      'Troche/sublingual format',
+      'Supports blood flow and performance',
+      'Provider-guided dosing',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Place one troche/SL tab under the tongue and allow it to dissolve. Follow your provider’s dosing schedule.',
+    sideEffects:
+      'May include flushing, headache, or mild dizziness. Seek help if symptoms are severe or persistent.',
+    whyChoose: [
+      { title: 'Performance support', excerpt: 'Helps you feel confident and ready' },
+      { title: 'Sublingual delivery', excerpt: 'Convenient and fast-acting route' },
+      { title: 'Provider-guided', excerpt: 'Personalized plan for your goals' },
+    ],
+    plan: [{ id: 'mv-1', title: 'Single Pack', price: 129, oldPrice: 169, href: '#' }],
+    question: [
+      { title: 'What is this blend?', description: 'A compounded troche/SL formulation designed to support male performance and stamina.' },
+      { title: 'How do I take it?', description: 'Dissolve one troche/SL tab under the tongue as your provider directs.' },
+      { title: 'Side effects?', description: 'Flushing or headache can occur. Contact your provider if severe.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Use sublingually', description: 'Let the troche dissolve fully.' },
+      { step: 2, title: 'Support performance', description: 'Formulated to back stamina and readiness.' },
+      { step: 3, title: 'Stay consistent', description: 'Follow your plan for best results.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 2 },
+  },
+  {
+    token: 'oxytocin-nasal-spray',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/oxytocin-nasal-spray',
+    hrefForm: 'sLinkForm',
+    name: 'Oxytocin Nasal Spray (Mood & Intimacy) — Nasal Spray',
+    oldPrice: 129,
+    price: 89,
+    popular: false,
+    inStock: true,
+    badge: 'Compounded nasal formulation',
+    description:
+      'A compounded oxytocin nasal spray designed to support mood, bonding, and intimacy.',
+    features: [
+      'Easy nasal administration',
+      'Supports mood & connection',
+      'Provider-guided use',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Use as directed by your provider. Prime the pump if needed. Avoid sharing devices.',
+    sideEffects:
+      'May include nasal irritation or headache. Stop use and contact your provider if severe.',
+    whyChoose: [
+      { title: 'Mood & intimacy', excerpt: 'Supports bonding pathways' },
+      { title: 'Simple dosing', excerpt: 'Quick nasal administration' },
+      { title: 'Discreet', excerpt: 'Portable spray device' },
+    ],
+    plan: [{ id: 'oxy-1', title: 'Single Bottle', price: 89, oldPrice: 129, href: '#' }],
+    question: [
+      { title: 'What is oxytocin?', description: 'A peptide associated with social bonding; this compounded spray is designed to support mood and intimacy.' },
+      { title: 'How do I use it?', description: 'Follow your provider’s instructions for number of sprays and timing.' },
+      { title: 'Side effects?', description: 'May include nasal irritation or headache. Seek help if severe.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Prime & spray', description: 'Use intranasally as directed.' },
+      { step: 2, title: 'Support bonding', description: 'Targets pathways linked to intimacy.' },
+      { step: 3, title: 'Use consistently', description: 'Follow your plan for best results.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 3 },
+  },
+  {
+    token: 'pt-141-nasal-spray',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/pt-141-nasal-spray',
+    hrefForm: 'sLinkForm',
+    name: 'PT-141 Nasal Spray (Libido & Arousal) — Nasal Spray',
+    oldPrice: 199,
+    price: 149,
+    popular: true,
+    inStock: true,
+    badge: 'Popular peptide-based option',
+    description:
+      'A compounded PT-141 nasal spray designed to support libido and arousal in men and women.',
+    features: [
+      'Targets desire and arousal',
+      'Nasal route for convenience',
+      'Provider-customized plan',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Use the prescribed number of sprays as directed by your provider. Do not exceed the recommended dose.',
+    sideEffects:
+      'May include flushing, nausea, or headache. Stop use and contact your provider if severe.',
+    whyChoose: [
+      { title: 'Libido support', excerpt: 'Designed to enhance desire' },
+      { title: 'Convenient', excerpt: 'Easy-to-use nasal device' },
+      { title: 'Personalized', excerpt: 'Provider-guided titration' },
+    ],
+    plan: [{ id: 'pt141-1', title: 'Single Bottle', price: 149, oldPrice: 199, href: '#' }],
+    question: [
+      { title: 'What is PT-141?', description: 'A peptide used in compounded therapies that can support libido and arousal.' },
+      { title: 'How do I use it?', description: 'Use intranasally per your provider’s instructions for timing and dose.' },
+      { title: 'Side effects?', description: 'Possible flushing, nausea, or headache. Contact your provider if severe.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Spray intranasally', description: 'Follow the prescribed regimen.' },
+      { step: 2, title: 'Support arousal', description: 'Targets central pathways for desire.' },
+      { step: 3, title: 'Assess & adjust', description: 'Your provider may tailor the plan.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 4 },
+  },
+  {
+    token: 'sildenafil-100mg',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/sildenafil-100mg',
+    hrefForm: 'sLinkForm',
+    name: 'Sildenafil 100mg (ED Relief) — Tablet',
+    oldPrice: 89,
+    price: 59,
+    popular: true,
+    inStock: true,
+    badge: 'Used and trusted by 200,000 people',
+    description:
+      'A proven ED treatment that helps you achieve and maintain stronger erections when you need them.',
+    features: [
+      'Clinically proven ED relief',
+      'Typical onset within 30–60 minutes',
+      'On-demand dosing',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Take one tablet with water about 30–60 minutes before sexual activity. Do not exceed one dose in 24 hours.',
+    sideEffects:
+      'Common side effects may include headache, flushing, or nasal congestion. Seek help if severe or persistent.',
+    whyChoose: [
+      { title: 'Effective relief', excerpt: 'Helps achieve and maintain erections' },
+      { title: 'On-demand', excerpt: 'Use only when needed' },
+      { title: 'Provider-guided', excerpt: 'Personalized guidance for safety' },
+    ],
+    plan: [{ id: 'sil-1', title: '10 Tablets', price: 59, oldPrice: 89, href: '#' }],
+    question: [
+      { title: 'What is Sildenafil?', description: 'A PDE5 inhibitor used to treat erectile dysfunction by improving blood flow.' },
+      { title: 'How do I take it?', description: 'Take one tablet 30–60 minutes before activity with water. Avoid high-fat meals around dosing.' },
+      { title: 'Side effects?', description: 'Headache, flushing, or congestion can occur; contact your provider if severe.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Take as needed', description: 'Dose before planned activity.' },
+      { step: 2, title: 'Get aroused', description: 'Requires sexual stimulation to work.' },
+      { step: 3, title: 'Enjoy support', description: 'Improved blood flow aids performance.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 5 },
+  },
+  {
+    token: 'tadalafil-20mg',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/tadalafil-20mg',
+    hrefForm: 'sLinkForm',
+    name: 'Tadalafil 20mg (ED Relief) — Tablet',
+    oldPrice: 88,
+    price: 58,
+    popular: true,
+    inStock: true,
+    badge: 'Used and trusted by 200,000 people',
+    description:
+      'Effectively, daily-use ED treatment that helps you stay ready — whenever the moment is right.',
+    features: [
+      'Clinically proven to treat ED effectively',
+      'Stays active in your system for up to 36 hours',
+      'Starts working in as little as 30 minutes',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Take one tablet with water about 30 minutes before sexual activity. Do not take more than one dose in 24 hours.',
+    sideEffects:
+      'Common side effects may include headache, indigestion, flushing, or muscle aches. Seek help if severe or persistent.',
+    whyChoose: [
+      { title: 'Faster-acting', excerpt: 'Starts working in as little as 30 minutes' },
+      { title: 'Bigger, harder erections', excerpt: 'Improves blood flow where it matters' },
+      { title: 'Longer-lasting', excerpt: 'Stays effective for up to 36 hours' },
+    ],
+    plan: [{ id: 'tad20-1', title: '10 Tablets', price: 58, oldPrice: 88, href: '#' }],
+    question: [
+      { title: 'What are Tadalafil?', description: 'Tadalafil is a long-acting ED medication that helps you to achieve and maintain stronger erections.' },
+      { title: 'How do I take it?', description: 'Take one tablet with water about 30 minutes before sexual activity. Do not take more than one dose in 24 hours.' },
+      { title: 'What are the side effects?', description: 'Common effects may include headache, indigestion, flushing, or muscle aches.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Take the tablet', description: 'Swallow one pill with water 30–60 minutes before activity.' },
+      { step: 2, title: 'Get aroused', description: 'Works with sexual stimulation.' },
+      { step: 3, title: 'Enjoy the results', description: 'Support that can last up to 36 hours.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 6 },
+  },
+  {
+    token: 'tadalafil-5mg-daily',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/tadalafil-5mg-daily',
+    hrefForm: 'sLinkForm',
+    name: 'Tadalafil 5mg Daily (Continuous Support) — Tablet',
+    oldPrice: 99,
+    price: 69,
+    popular: false,
+    inStock: true,
+    badge: 'Once-daily, steady support',
+    description:
+      'A lower-dose, once-daily tadalafil regimen designed for continuous ED support and spontaneity.',
+    features: [
+      'Steady-state coverage',
+      'Supports spontaneity',
+      'Low daily dose',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Take one tablet daily at the same time, with or without food, as directed by your provider.',
+    sideEffects:
+      'May include headache, indigestion, or back/muscle aches. Contact your provider if severe.',
+    whyChoose: [
+      { title: 'Daily readiness', excerpt: 'Support without timing doses' },
+      { title: 'Low-dose plan', excerpt: 'Designed for tolerability' },
+      { title: 'Provider-guided', excerpt: 'Monitor and adjust as needed' },
+    ],
+    plan: [{ id: 'tad5-1', title: '30 Tablets', price: 69, oldPrice: 99, href: '#' }],
+    question: [
+      { title: 'What is daily tadalafil?', description: 'A once-daily low dose aiming for continuous ED support.' },
+      { title: 'How do I take it?', description: 'Take at the same time each day as directed by your provider.' },
+      { title: 'Side effects?', description: 'Headache or indigestion can occur. Contact your provider if severe.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Take daily', description: 'Builds steady support over time.' },
+      { step: 2, title: 'Stay ready', description: 'No need to time single doses.' },
+      { step: 3, title: 'Review plan', description: 'Follow up with your provider as needed.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 7 },
+  },
+  {
+    token: 'vitalitymax-tadalafil-sildenafil-oxytocin',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/vitalitymax-tadalafil-sildenafil-oxytocin',
+    hrefForm: 'sLinkForm',
+    name: 'VitalityMax (Tadalafil + Sildenafil + Oxytocin) — Troche/SL Tab',
+    oldPrice: 229,
+    price: 179,
+    popular: true,
+    inStock: true,
+    badge: 'Triple-action, provider-guided blend',
+    description:
+      'A compounded troche/SL combination of tadalafil, sildenafil, and oxytocin.',
+    features: [
+      'Multi-pathway support',
+      'Troche/sublingual format',
+      'Personalized plan',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Dissolve one troche under the tongue per your provider’s guidance. Do not exceed recommended dosing.',
+    sideEffects:
+      'May include flushing, headache, or nausea. Stop use and contact your provider if severe.',
+    whyChoose: [
+      { title: 'Comprehensive support', excerpt: 'Targets performance and intimacy' },
+      { title: 'Fast-acting route', excerpt: 'Sublingual administration' },
+      { title: 'Provider oversight', excerpt: 'Tailored to your needs' },
+    ],
+    plan: [{ id: 'vita-1', title: 'Single Pack', price: 179, oldPrice: 229, href: '#' }],
+    question: [
+      { title: 'What is VitalityMax?', description: 'A compounded combination of tadalafil, sildenafil, and oxytocin in a sublingual troche.' },
+      { title: 'How do I take it?', description: 'Dissolve under the tongue as your provider directs. Do not combine with nitrates.' },
+      { title: 'Side effects?', description: 'Flushing or headache can occur. Contact your provider if severe.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Dissolve sublingually', description: 'Follow timing as prescribed.' },
+      { step: 2, title: 'Multi-pathway action', description: 'Aims to support both performance and intimacy.' },
+      { step: 3, title: 'Monitor response', description: 'Provider may adjust the plan for you.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 8 },
+  },
+  {
+    token: 'bliss-intimacy-cream',
+    category: ProductCategory.SEXUAL_HEALTH,
+    href: '/sexual-health/bliss-intimacy-cream',
+    hrefForm: 'sLinkForm',
+    name: 'BLISS Intimacy Cream (Topical Libido Support) — Cream',
+    oldPrice: 99,
+    price: 79,
+    popular: false,
+    inStock: true,
+    badge: 'Topical, targeted support',
+    description:
+      'A topical compounded cream designed to support arousal and sensitivity during intimacy.',
+    features: [
+      'Topical/localized application',
+      'Designed for sensitivity and arousal',
+      'Discreet and easy to use',
+    ],
+    shipping: 'Ships in 1–2 days - Free delivery over $40',
+    instructions:
+      'Apply a small amount to the directed area prior to intimacy as instructed by your provider. Wash hands after use.',
+    sideEffects:
+      'May include local irritation or redness. Discontinue and contact your provider if severe.',
+    whyChoose: [
+      { title: 'Targeted', excerpt: 'Applies only where needed' },
+      { title: 'Discreet', excerpt: 'Easy to integrate into routine' },
+      { title: 'Compounded', excerpt: 'Made to provider specifications' },
+    ],
+    plan: [{ id: 'bliss-1', title: 'Single Tube', price: 79, oldPrice: 99, href: '#' }],
+    question: [
+      { title: 'What is BLISS?', description: 'A compounded topical cream intended to support sensitivity and arousal.' },
+      { title: 'How do I use it?', description: 'Apply a thin layer as directed by your provider before intimacy.' },
+      { title: 'Side effects?', description: 'Possible local irritation; discontinue if severe and contact your provider.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Apply topically', description: 'Use a small amount as directed.' },
+      { step: 2, title: 'Allow absorption', description: 'Give it time to absorb before activity.' },
+      { step: 3, title: 'Assess response', description: 'Adjust with your provider’s guidance.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 9 },
+  },
+  {
+    token: 'nad-plus-injection',
+    category: ProductCategory.WELLNESS,
+    href: '/wellness/nad-plus-injection',
+    hrefForm: 'hLinkForm',
+    name: 'NAD+ Injection (Cellular Repair & Vitality) — Injection',
+    oldPrice: 199,
+    price: 149,
+    popular: true,
+    inStock: true,
+    badge: 'Includes 1 vial',
+    description:
+      'A NAD+ injection designed to support cellular repair, steady vitality, and balanced wellness with provider oversight.',
+    features: [
+      'Targets cellular repair pathways',
+      'Supports sustained energy levels',
+      'Includes 1 vial',
+    ],
+    shipping: 'Ships in 1–2 days — Free delivery over $40',
+    instructions:
+      'Inject as directed on your schedule. Rotate injection sites, follow aseptic technique, and never exceed the prescribed dose.',
+    sideEffects:
+      'May include local irritation, nausea, or headache. Contact your provider if symptoms are severe or persistent.',
+    whyChoose: [
+      { title: 'Cellular support', excerpt: 'Repair and vitality focus' },
+      { title: 'Steady energy', excerpt: 'Backs daily performance' },
+      { title: 'Guided plan', excerpt: 'Clear dosing structure' },
+    ],
+    plan: [{ id: 'nadinj-1', title: 'Single Vial', price: 149, oldPrice: 199, href: '#' }],
+    question: [
+      { title: 'What is this plan?', description: 'A clinician-guided NAD+ injection protocol designed to support cellular health and day-to-day vitality.' },
+      { title: 'How do I use it?', description: 'Administer injections per schedule, rotate sites, and maintain hydration and nutrition.' },
+      { title: 'Side effects?', description: 'Mild local irritation can occur. Seek help if symptoms escalate or persist.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Start dosing', description: 'Follow your scheduled injections.' },
+      { step: 2, title: 'Back metabolism', description: 'NAD+ supports cellular pathways.' },
+      { step: 3, title: 'Review & adjust', description: 'Provider fine-tunes as needed.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 1 },
+  },
+  {
+    token: 'nad-plus-nasal-spray',
+    category: ProductCategory.WELLNESS,
+    href: '/wellness/nad-plus-nasal-spray',
+    hrefForm: 'hLinkForm',
+    name: 'NAD+ Nasal Spray (Energy & Brain Health) — Nasal Spray',
+    oldPrice: 169,
+    price: 69,
+    popular: true,
+    inStock: true,
+    badge: 'Includes 1 spray bottle',
+    description:
+      'A NAD+ nasal spray designed to support cellular energy, mental clarity, and healthy focus with easy daily use.',
+    features: [
+      'Targets cellular energy pathways',
+      'Supports clarity and cognition',
+      'Includes 1 spray bottle',
+    ],
+    shipping: 'Ships in 1–2 days — Free delivery over $40',
+    instructions:
+      'Use the directed number of sprays per nostril as prescribed. Prime the device if needed and avoid sharing applicators.',
+    sideEffects:
+      'May include mild nasal irritation or headache. Stop use and contact your provider if symptoms are severe or persistent.',
+    whyChoose: [
+      { title: 'Energy support', excerpt: 'Backed by NAD+ pathways' },
+      { title: 'Brain health', excerpt: 'Clarity and focus support' },
+      { title: 'Daily ease', excerpt: 'Quick, discreet dosing' },
+    ],
+    plan: [{ id: 'nadspray-1', title: 'Single Bottle', price: 69, oldPrice: 169, href: '#' }],
+    question: [
+      { title: 'What is this spray?', description: 'A compounded NAD+ nasal option designed to support energy and cognitive function in daily routines.' },
+      { title: 'How do I use it?', description: 'Spray as prescribed and keep a consistent schedule. Avoid blowing your nose immediately after dosing.' },
+      { title: 'Side effects?', description: 'Occasional nasal irritation or headache can occur. Seek help if symptoms persist or worsen.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Prime & spray', description: 'Administer intranasally per your plan.' },
+      { step: 2, title: 'Support energy', description: 'NAD+ backs cellular metabolism.' },
+      { step: 3, title: 'Stay consistent', description: 'Daily use reinforces benefits.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 2 },
+  },
+  {
+    token: 'sermorelin-peptide-therapy',
+    category: ProductCategory.WELLNESS,
+    href: '/wellness/sermorelin-peptide-therapy',
+    hrefForm: 'hLinkForm',
+    name: 'Sermorelin Peptide Therapy (GH Support & Sleep) — Injection',
+    oldPrice: 229,
+    price: 119,
+    popular: false,
+    inStock: true,
+    badge: 'Includes 1 vial',
+    description:
+      'A sermorelin peptide plan designed to support GH signaling, restful sleep, and recovery with structured nightly dosing.',
+    features: [
+      'Supports GH release patterns',
+      'Focus on sleep and recovery',
+      'Includes 1 vial',
+    ],
+    shipping: 'Ships in 1–2 days — Free delivery over $40',
+    instructions:
+      'Inject subcutaneously in the evening as directed. Keep a consistent bedtime routine and follow your provider’s guidance.',
+    sideEffects:
+      'May include local irritation, flushing, or headache. Contact your provider if symptoms are severe or persistent.',
+    whyChoose: [
+      { title: 'GH support', excerpt: 'Backs natural signaling' },
+      { title: 'Sleep focus', excerpt: 'Rest and recovery support' },
+      { title: 'Structured plan', excerpt: 'Nightly, consistent dosing' },
+    ],
+    plan: [{ id: 'serm-1', title: 'Single Vial', price: 119, oldPrice: 229, href: '#' }],
+    question: [
+      { title: 'What is this therapy?', description: 'A peptide protocol using sermorelin aimed at supporting growth-hormone rhythms and restorative sleep.' },
+      { title: 'How do I use it?', description: 'Administer subcutaneous injections nightly and keep consistent sleep hygiene.' },
+      { title: 'Side effects?', description: 'Occasional flushing or headache may occur. Seek help if persistent or severe.' },
+    ],
+    howItWorks: [
+      { step: 1, title: 'Dose nightly', description: 'Follow the evening dosing plan.' },
+      { step: 2, title: 'Support sleep', description: 'Backs recovery and rhythms.' },
+      { step: 3, title: 'Assess response', description: 'Provider adjusts as needed.' },
+    ],
+    images: [{ fallbackUrl: PLACEHOLDER_PRODUCT_IMAGE }],
+    metadata: { displayOrder: 3 },
+  },
 ];
 
 const adminSeedBase = {
@@ -1550,6 +2141,10 @@ function buildRecordSeries(
   baseRecords: RecordSeed[],
   count = 10,
 ): RecordSeed[] {
+  if (!baseRecords.length || count <= 0) {
+    return [];
+  }
+
   const fallback: RecordSeed = baseRecords[0] ?? {
     id: 'fallback-record',
     medication: 'Semaglutide',
@@ -1559,6 +2154,7 @@ function buildRecordSeries(
     purchasedAt: '2025-09-01T09:00:00.000Z',
     renewalDate: '2025-10-15T00:00:00.000Z',
     notes: 'Auto-generated record.',
+    trackingNumber: 'FDX-FALLBACK',
   };
 
   const baseStart = new Date(fallback.startDate);
@@ -1573,8 +2169,9 @@ function buildRecordSeries(
     const renewal = new Date(end);
     renewal.setUTCDate(renewal.getUTCDate() + 7);
 
+    const id = randomUUID();
     return {
-      id: randomUUID(),
+      id,
       medication: `${template.medication} Cycle ${idx + 1}`,
       medicationType: template.medicationType ?? fallback.medicationType,
       startDate: start.toISOString(),
@@ -1582,6 +2179,9 @@ function buildRecordSeries(
       purchasedAt: purchased.toISOString(),
       renewalDate: renewal.toISOString(),
       notes: template.notes ?? `Auto-generated record ${idx + 1}`,
+      trackingNumber:
+        template.trackingNumber ??
+        `FDX-${id.replace(/-/g, '').slice(0, 12).toUpperCase()}`,
     };
   });
 }
@@ -1740,7 +2340,7 @@ function normalizeWhyChoose(
   return whyChoose.map((item) => ({
     title: sanitizeText(item?.title) ?? '',
     excerpt: sanitizeText(item?.excerpt) ?? '',
-    imgSrc: sanitizeText(item?.imgSrc) ?? '',
+    imgSrc: sanitizeText(item?.imgSrc) ?? PLACEHOLDER_BENEFIT_IMAGE,
   }));
 }
 
@@ -1761,20 +2361,32 @@ function normalizeImages(images?: ProductImageSeed[]): ProductImageSeed[] {
   if (!Array.isArray(images)) {
     return [];
   }
-  return images
-    .filter((image) => typeof image?.objectKey === 'string' && image.objectKey.trim().length > 0)
-    .map((image, index) => ({
-      id: image.id || `image-${index + 1}-${randomUUID()}`,
-      bucket: image.bucket ?? 'weight-loss-media',
-      objectKey: image.objectKey.replace(/^\/+/, ''),
-      altText: sanitizeText(image.altText) ?? undefined,
-      fallbackUrl: sanitizeText(image.fallbackUrl) ?? undefined,
-      variant: sanitizeText(image.variant) ?? undefined,
-    }));
+  const results: ProductImageSeed[] = [];
+  images.forEach((image, index) => {
+    const objectKey =
+      typeof image?.objectKey === 'string' && image.objectKey.trim().length > 0
+        ? image.objectKey.replace(/^\/+/, '')
+        : undefined;
+    const fallbackUrl =
+      sanitizeText(image?.fallbackUrl) ?? PLACEHOLDER_PRODUCT_IMAGE;
+    if (!objectKey && !fallbackUrl) {
+      return;
+    }
+    results.push({
+      id: image?.id || `image-${index + 1}-${randomUUID()}`,
+      bucket: image?.bucket ?? undefined,
+      objectKey,
+      altText: sanitizeText(image?.altText) ?? undefined,
+      fallbackUrl,
+      variant: sanitizeText(image?.variant) ?? undefined,
+    });
+  });
+  return results;
 }
 
 function mapProductSeed(seed: WeightLossProductSeed): ProductSeedPayload {
   return {
+    category: seed.category,
     name: seed.name.trim(),
     href: seed.href.trim(),
     hrefForm: sanitizeText(seed.hrefForm),
@@ -1793,7 +2405,7 @@ function mapProductSeed(seed: WeightLossProductSeed): ProductSeedPayload {
     question: normalizeFaqs(seed.question),
     howItWorks: normalizeSteps(seed.howItWorks),
     images: normalizeImages(seed.images),
-    metadata: seed.metadata ?? null,
+    metadata: (seed.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
   };
 }
 
@@ -1868,6 +2480,9 @@ async function seedAdmin(adminEmail: string, adminPassword: string) {
           renewalDate: record.renewalDate
             ? new Date(record.renewalDate)
             : null,
+          trackingNumber:
+            record.trackingNumber ??
+            `FDX-${record.id.replace(/-/g, '').slice(0, 12).toUpperCase()}`,
           notes: record.notes,
         })),
       },
@@ -1904,9 +2519,20 @@ async function seedPatients() {
 
   for (const patient of patientSeeds) {
     const passwordHash = await hashPassword(DEFAULT_PASSWORD);
-    const records = buildRecordSeries(patient.records);
-    const shots = buildShotSeries(patient.shots);
-    const activities = buildActivitySeries(patient.activities);
+    const hasRecordTemplates = patient.records.length > 0;
+    const recordSeriesCount = hasRecordTemplates
+      ? patient.recordSeriesCount ?? 10
+      : 0;
+    const records =
+      recordSeriesCount > 0
+        ? buildRecordSeries(patient.records, recordSeriesCount)
+        : [];
+    const shots =
+      patient.shots.length > 0 ? buildShotSeries(patient.shots) : [];
+    const activities =
+      patient.activities.length > 0
+        ? buildActivitySeries(patient.activities)
+        : [];
 
     const user = await prisma.user.create({
       data: {
@@ -1944,44 +2570,53 @@ async function seedPatients() {
             ),
           },
         },
-        records: {
-          create: records.map((record) => ({
-            id: record.id,
-            medication: record.medication,
-            medicationType: record.medicationType ?? null,
-            startDate: new Date(record.startDate),
-            endDate: record.endDate ? new Date(record.endDate) : null,
-            purchasedAt: new Date(record.purchasedAt),
-            renewalDate: record.renewalDate
-              ? new Date(record.renewalDate)
-              : null,
-            notes: record.notes,
-          })),
-        },
-        shots: {
-          create: shots.map((shot) => ({
-            id: shot.id,
-            date: new Date(shot.date),
-            medication: shot.medication,
-            doseValue: shot.doseValue,
-            doseUnit: shot.doseUnit,
-            site: shot.site,
-            painLevel: shot.painLevel,
-            weightKg: shot.weightKg,
-            caloriesAvg: shot.caloriesAvg,
-            proteinAvgG: shot.proteinAvgG,
-            notes: shot.notes,
-          })),
-        },
-        activities: {
-          create: activities.map((activity) => ({
-            id: activity.id,
-            kind: activity.kind,
-            title: activity.title,
-            subtitle: activity.subtitle,
-            occurredAt: new Date(activity.occurredAt),
-          })),
-        },
+        records: records.length
+          ? {
+              create: records.map((record) => ({
+                id: record.id,
+                medication: record.medication,
+                medicationType: record.medicationType ?? null,
+                startDate: new Date(record.startDate),
+                endDate: record.endDate ? new Date(record.endDate) : null,
+                purchasedAt: new Date(record.purchasedAt),
+                renewalDate: record.renewalDate
+                  ? new Date(record.renewalDate)
+                  : null,
+                trackingNumber:
+                  record.trackingNumber ??
+                  `FDX-${record.id.replace(/-/g, '').slice(0, 12).toUpperCase()}`,
+                notes: record.notes,
+              })),
+            }
+          : undefined,
+        shots: shots.length
+          ? {
+              create: shots.map((shot) => ({
+                id: shot.id,
+                date: new Date(shot.date),
+                medication: shot.medication,
+                doseValue: shot.doseValue,
+                doseUnit: shot.doseUnit,
+                site: shot.site,
+                painLevel: shot.painLevel,
+                weightKg: shot.weightKg,
+                caloriesAvg: shot.caloriesAvg,
+                proteinAvgG: shot.proteinAvgG,
+                notes: shot.notes,
+              })),
+            }
+          : undefined,
+        activities: activities.length
+          ? {
+              create: activities.map((activity) => ({
+                id: activity.id,
+                kind: activity.kind,
+                title: activity.title,
+                subtitle: activity.subtitle,
+                occurredAt: new Date(activity.occurredAt),
+              })),
+            }
+          : undefined,
       },
     });
 
@@ -1991,30 +2626,32 @@ async function seedPatients() {
       take: 2,
     });
 
-    if (userRecords[0]) {
-      const dueSoon = addDays(new Date(), 3);
-      await prisma.record.update({
-        where: { id: userRecords[0].id },
-        data: {
-          renewalDate: dueSoon,
-          endDate: subtractDays(dueSoon, 7),
-          startDate: subtractDays(dueSoon, 28),
-          purchasedAt: subtractDays(dueSoon, 32),
-        },
-      });
-    }
+    if (!patient.skipRecordAdjustments) {
+      if (userRecords[0]) {
+        const dueSoon = addDays(new Date(), 3);
+        await prisma.record.update({
+          where: { id: userRecords[0].id },
+          data: {
+            renewalDate: dueSoon,
+            endDate: subtractDays(dueSoon, 7),
+            startDate: subtractDays(dueSoon, 28),
+            purchasedAt: subtractDays(dueSoon, 32),
+          },
+        });
+      }
 
-    if (userRecords[1]) {
-      const dueLater = addDays(new Date(), 14);
-      await prisma.record.update({
-        where: { id: userRecords[1].id },
-        data: {
-          renewalDate: dueLater,
-          endDate: subtractDays(dueLater, 7),
-          startDate: subtractDays(dueLater, 28),
-          purchasedAt: subtractDays(dueLater, 34),
-        },
-      });
+      if (userRecords[1]) {
+        const dueLater = addDays(new Date(), 14);
+        await prisma.record.update({
+          where: { id: userRecords[1].id },
+          data: {
+            renewalDate: dueLater,
+            endDate: subtractDays(dueLater, 7),
+            startDate: subtractDays(dueLater, 28),
+            purchasedAt: subtractDays(dueLater, 34),
+          },
+        });
+      }
     }
 
     credentials.push({
@@ -2079,8 +2716,8 @@ async function seedRenewalNotifications() {
   }
 }
 
-async function seedWeightLossProducts() {
-  for (const product of weightLossProductSeeds) {
+async function seedProducts() {
+  for (const product of productSeeds) {
     const payload = mapProductSeed(product);
     await prisma.weightLossProduct.upsert({
       where: { token: product.token },
@@ -2130,8 +2767,8 @@ async function main() {
   console.log('Seeding patient accounts...');
   const patientCredentials = await seedPatients();
 
-  console.log('Seeding weight loss products...');
-  await seedWeightLossProducts();
+  console.log('Seeding catalog products...');
+  await seedProducts();
 
   console.log('Seeding blogs...');
   await seedBlogs();

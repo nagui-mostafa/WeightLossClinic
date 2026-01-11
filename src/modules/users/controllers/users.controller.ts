@@ -18,6 +18,8 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
+  ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -27,14 +29,12 @@ import { UsersService } from '../services/users.service';
 import { RolesGuard } from '../../common';
 import { Roles, CurrentUser } from '../../common';
 import { CreateUserDto } from '../dto/create-user.dto';
+import { CreateAdminUserDto } from '../dto/create-admin-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateUserRoleDto } from '../dto/update-user-role.dto';
-import { UpdateUserStatusDto } from '../dto/update-user-status.dto';
+import { UpdateUserStatusDto } from '../guards/update-user-status.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
-import {
-  UserResponseDto,
-  UserNotificationDto,
-} from '../dto/user-response.dto';
+import { UserResponseDto, UserNotificationDto } from '../dto/user-response.dto';
 import { PaginatedResult } from '../../common/interfaces/paginated-result.interface';
 import { RequestContext } from '../../common/interfaces/request-context.interface';
 
@@ -48,6 +48,19 @@ export class UsersController {
   @Get()
   @ApiOperation({ summary: 'List users (admin only)' })
   @ApiOkResponse({ description: 'Paginated users response' })
+  @ApiSecurity('AdminApiKey')
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page index (1-based)',
+    schema: { type: 'number', minimum: 1, default: 1 },
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Rows per page (max 100)',
+    schema: { type: 'number', minimum: 1, maximum: 100, default: 20 },
+  })
   @Roles(Role.ADMIN)
   async listUsers(
     @Query() query: ListUsersQueryDto,
@@ -66,9 +79,10 @@ export class UsersController {
   @Post()
   @ApiOperation({ summary: 'Create user (admin only)' })
   @ApiCreatedResponse({ type: UserResponseDto })
+  @ApiSecurity('AdminApiKey')
   @Roles(Role.ADMIN)
   async createUser(
-    @Body() dto: CreateUserDto,
+    @Body() dto: CreateAdminUserDto,
     @CurrentUser() actor: AuthenticatedUser,
     @Req() request: Request,
   ): Promise<UserResponseDto> {
@@ -112,6 +126,7 @@ export class UsersController {
   @Patch(':id/role')
   @ApiOperation({ summary: 'Update user role (admin only)' })
   @ApiOkResponse({ type: UserResponseDto })
+  @ApiSecurity('AdminApiKey')
   @Roles(Role.ADMIN)
   async updateRole(
     @Param('id') id: string,
@@ -130,6 +145,7 @@ export class UsersController {
   @Patch(':id/status')
   @ApiOperation({ summary: 'Update user status (admin only)' })
   @ApiOkResponse({ type: UserResponseDto })
+  @ApiSecurity('AdminApiKey')
   @Roles(Role.ADMIN)
   async updateStatus(
     @Param('id') id: string,
@@ -148,6 +164,7 @@ export class UsersController {
   @Delete(':id')
   @ApiOperation({ summary: 'Soft delete user (admin only)' })
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiSecurity('AdminApiKey')
   @Roles(Role.ADMIN)
   async softDelete(
     @Param('id') id: string,
@@ -191,6 +208,25 @@ export class UsersController {
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<void> {
     await this.usersService.deleteNotification(id, notificationId, actor);
+  }
+
+  @Patch(':id/notifications/:notificationId/status')
+  @ApiOperation({
+    summary: 'Update notification status (admin or owner)',
+  })
+  @ApiOkResponse({ type: UserNotificationDto })
+  async updateNotificationStatus(
+    @Param('id') id: string,
+    @Param('notificationId') notificationId: string,
+    @Body('status') status: 'ACTIVE' | 'PROCESSING',
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<UserNotificationDto> {
+    return this.usersService.updateNotificationStatus(
+      id,
+      notificationId,
+      status,
+      actor,
+    );
   }
 
   private toRequestContext(request: Request, userId?: string): RequestContext {

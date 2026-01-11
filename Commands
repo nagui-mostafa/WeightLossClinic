@@ -1,0 +1,53 @@
+# CONNECT TO DATABASE
+    aws ssm start-session \
+        --target i-0f9d8eab11737f436 \
+        --document-name AWS-StartPortForwardingSessionToRemoteHost \
+        --parameters '{"host":["weight-loss-db.cerwwea2qjz1.us-east-1.rds.amazonaws.com"],"portNumber":["5432"],"localPortNumber":["5433"]}'
+
+
+# SEARCH DATABASE
+
+    SELECT code, "planSlug", "planWeeks", "productToken"
+    FROM groupon_code_catalog
+    WHERE code = '3HRUK6ZBV6SR';
+
+
+SELECT *
+FROM groupon_vouchers
+WHERE "redemptionCode" = 'QABQU5TM846Q';
+
+    SELECT
+        id,
+        redemptionCode,
+        grouponCode,
+        status,
+        reservationExpiresAt,
+        redeemedAt,
+        recordId,
+        createdAt,
+        updatedAt
+      FROM groupon_vouchers
+      WHERE redemptionCode = '39RRT2EZZQWB';
+
+
+# SEARCH LOGS
+
+    START=$(( $(date -u +%s) - 30*24*3600 ))
+    END=$(date -u +%s)
+
+    QUERY='fields @timestamp, event, redemptionCode, requestId, status, redeemedAt, reason, url
+    | filter ispresent(event)
+    | filter redemptionCode = "QABQU5TM846Q"
+    | sort @timestamp asc'
+
+    QID=$(aws logs start-query \
+      --log-group-name /weightloss/api \
+      --start-time "$START" \
+      --end-time "$END" \
+      --query-string "$QUERY" \
+      --query queryId --output text)
+
+     sleep 2
+     aws logs get-query-results --query-id "$QID"
+
+

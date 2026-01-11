@@ -12,14 +12,30 @@ export class ListUsersQueryDto extends PaginationQueryDto {
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()
-  @Transform(({ value }) => {
-    if (value === undefined || value === null || value === '') {
+  @Transform(({ value, obj }) => {
+    const raw = obj?.isActive ?? value;
+    if (raw === undefined || raw === null || raw === '') {
       return undefined;
     }
-    if (typeof value === 'boolean') {
-      return value;
+    if (typeof raw === 'boolean') {
+      return raw;
     }
-    return value === 'true';
+    if (typeof raw === 'string') {
+      const normalized = raw.toLowerCase();
+      if (normalized === 'true') {
+        return true;
+      }
+      if (normalized === 'false') {
+        return false;
+      }
+      if (normalized === '1') {
+        return true;
+      }
+      if (normalized === '0') {
+        return false;
+      }
+    }
+    return Boolean(raw);
   })
   isActive?: boolean;
 

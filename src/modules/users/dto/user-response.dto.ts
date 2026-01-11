@@ -1,9 +1,7 @@
-import {
-  ActivityKind,
-  MedicationType,
-  Role,
-} from '../../common';
+import { ActivityKind, MedicationType, Role } from '../../common';
+import { ProductCategory } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AdminStatsResponseDto } from '../../admin/dto/stats-response.dto';
 
 export class UserNotificationRecordDto {
   @ApiProperty({ example: 'rec_sarah_1' })
@@ -36,6 +34,18 @@ export class UserNotificationDto {
 
   @ApiPropertyOptional({ type: UserNotificationRecordDto })
   record?: UserNotificationRecordDto | null;
+
+  @ApiProperty({ enum: ['ACTIVE', 'PROCESSING', 'CLOSED'], example: 'ACTIVE' })
+  status!: 'ACTIVE' | 'PROCESSING' | 'CLOSED';
+
+  @ApiPropertyOptional({ example: 'Sarah Adams' })
+  fullName?: string;
+
+  @ApiPropertyOptional({ example: 'sarah.adams@example.com' })
+  email?: string;
+
+  @ApiPropertyOptional({ example: '+1 (555) 010-2000' })
+  phone?: string | null;
 }
 
 export class UserProfileDto {
@@ -65,7 +75,10 @@ export class UserProfileDto {
   @ApiProperty({ example: true })
   isEmailVerified!: boolean;
 
-  @ApiProperty({ example: true })
+  @ApiProperty({
+    example: true,
+    description: 'Indicates whether the patient currently has an active plan',
+  })
   isActive!: boolean;
 
   @ApiProperty({ example: '2025-10-25T15:00:00.000Z' })
@@ -170,6 +183,9 @@ export class UserRecordDto {
   @ApiPropertyOptional({ enum: MedicationType })
   medicationType?: MedicationType | null;
 
+  @ApiPropertyOptional({ enum: ProductCategory })
+  category?: ProductCategory | null;
+
   @ApiProperty({ example: '2025-09-01T00:00:00.000Z' })
   startDate!: string;
 
@@ -184,6 +200,24 @@ export class UserRecordDto {
 
   @ApiPropertyOptional({ example: 'Weekly injections with nutrition consult.' })
   notes?: string | null;
+
+  @ApiPropertyOptional({ example: '123456789012' })
+  trackingNumber?: string | null;
+
+  @ApiPropertyOptional({
+    enum: ['ACTIVE', 'COMPLETED', 'CANCELED'],
+    example: 'ACTIVE',
+  })
+  status?: 'ACTIVE' | 'COMPLETED' | 'CANCELED';
+
+  @ApiPropertyOptional({ example: 299.99, description: 'Plan price in USD' })
+  price?: number | null;
+
+  @ApiPropertyOptional({
+    example: 4,
+    description: 'Plan duration in weeks',
+  })
+  planDuration?: number | null;
 }
 
 export class UserShotDto {
@@ -349,4 +383,7 @@ export class UserResponseDto {
     ],
   })
   notifications!: UserNotificationDto[];
+
+  @ApiPropertyOptional({ type: AdminStatsResponseDto })
+  adminStats?: AdminStatsResponseDto;
 }

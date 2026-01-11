@@ -19,7 +19,6 @@ async function bootstrap() {
     'https://fonts.gstatic.com',
   ];
 
-
   // Use Pino logger
   app.useLogger(app.get(Logger));
 
@@ -106,12 +105,24 @@ async function bootstrap() {
       },
       'JWT-auth',
     )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-admin-api-key',
+        description: 'Admin API key (for admin endpoints only)',
+      },
+      'AdminApiKey',
+    )
     .addTag('auth', 'Authentication endpoints')
     .addTag('users', 'User management')
     .addTag('records', 'Medication records')
     .addTag('admin', 'Admin operations')
     .addTag('health', 'Health & monitoring')
-    .addTag('weight-loss-products', 'Weight loss product catalog')
+    .addTag(
+      'products',
+      'Product catalog (weight-loss, sexual-health, wellness)',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

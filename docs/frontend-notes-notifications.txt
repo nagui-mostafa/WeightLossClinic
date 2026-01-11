@@ -1,0 +1,27 @@
+Frontend Notes – Notifications (Dec 25, 2025)
+
+What changed
+- Excel export: new admin endpoint GET /v1/admin/notifications/export returns an .xlsx with all notifications (full name, email, phone, title, medication, renewal date, days remaining). Accepts admin JWT or x-api-key.
+- Admin dashboard payloads: when the user is an ADMIN, auth/login, auth/refresh, and auth/me now include the latest 5 notifications system-wide with fullName, email, phone, status, record.medication, renewalDate, daysRemaining.
+- Notification status: added enum status (ACTIVE | PROCESSING | CLOSED). CLOSED is set automatically when a new record in the same category is created (see below).
+- Record status: records now have status (ACTIVE | COMPLETED | CANCELED). When a new record is created in the same category, prior records in that category are marked COMPLETED and their ACTIVE/PROCESSING notifications are CLOSED + read=true.
+- No frontend action needed to flip statuses: if you add a new record for a user (e.g., via PATCH /v1/users/:id with records array), backend will automatically mark older same-category records COMPLETED and close their reminders. You only need to send the new record (and any records you want to update); statuses are recalculated server-side.
+- Admin notifications listing: new paginated endpoint GET /v1/admin/notifications
+  - Filters: status=ACTIVE|PROCESSING|CLOSED, email (contains, case-insensitive), phone (contains)
+  - Sorting: sort=renewalDate:asc|renewalDate:desc|createdAt:asc|createdAt:desc (default renewalDate:asc with dueDate/createdAt fallback)
+  - Pagination: page (default 1), limit (default 20, max 100)
+  - Returns: id, title, message, status, read, dueDate, createdAt, fullName, email, phone, medication, renewalDate, daysRemaining
+- Admin stats/analytics now include reminder efficacy:
+  - reminderEfficacy = closedReminders / totalReminders (4-decimal)
+  - closedReminders, totalReminders counts
+- Records now have optional price (Decimal) and planDuration (weeks). Admin stats expose totalRevenue (sum of record.price, null treated as 0).
+
+Testing quick curls (prod base https://api.joeymed.com/v1)
+- Export XLSX: curl -L -o notifications.xlsx -H "x-api-key: <ADMIN_API_KEY>" https://api.joeymed.com/v1/admin/notifications/export
+- List with filters: curl -G https://api.joeymed.com/v1/admin/notifications -H "x-api-key: <ADMIN_API_KEY>" --data-urlencode "status=ACTIVE" --data-urlencode "sort=renewalDate:desc" --data-urlencode "page=1" --data-urlencode "limit=20"
+
+Notes for frontend
+- Use either admin JWT (Authorization: Bearer …) or x-api-key; both are accepted independently.
+- Swagger is up to date (admin tag): docs at /docs reflect the new endpoints/fields.
+- Migration required: NotificationStatus enum + status column added to user_notifications; ensure backend has run `npx prisma migrate deploy`.
+- Auto-closing reminders: When a user purchases a new record in the same category, any ACTIVE/PROCESSING notifications tied to older records of that category are marked CLOSED + read=true (the old record stays; only the reminder is closed). Only one “open” reminder per category remains.

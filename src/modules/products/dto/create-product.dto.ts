@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
+  IsEnum,
   IsNumber,
   IsObject,
   IsOptional,
@@ -11,6 +12,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ProductCategory } from '@prisma/client';
 
 export class ProductPlanOptionDto {
   @ApiProperty({ example: 'plan-basic' })
@@ -96,19 +98,30 @@ export class ProductHowItWorksStepDto {
 }
 
 export class ProductImageInputDto {
-  @ApiPropertyOptional({ example: 'glp1-core-hero' })
+  @ApiPropertyOptional({
+    example: 'glp1-core-hero',
+    description:
+      'Stable identifier for an existing image. Use IDs returned by the API when editing.',
+  })
   @IsOptional()
   @IsString()
   id?: string;
 
-  @ApiPropertyOptional({ example: 'marketing-assets' })
+  @ApiPropertyOptional({
+    example: 'weight-loss-media',
+    description:
+      'Storage bucket for the asset. Creation scripts may override it, but update requests treat it as read-only.',
+    readOnly: true,
+  })
   @IsOptional()
   @IsString()
   bucket?: string;
 
   @ApiPropertyOptional({
-    description: 'S3/MinIO object key or relative asset path',
+    description:
+      'S3/MinIO object key or relative asset path. Returned in responses and may be provided during creation scripts, but update requests ignore changes—upload a file instead.',
     example: 'weight-loss/products/glp1-core/hero.png',
+    readOnly: true,
   })
   @IsOptional()
   @IsString()
@@ -138,7 +151,7 @@ export class ProductImageInputDto {
 export class ProductImageUpdateDto extends ProductImageInputDto {
   @ApiPropertyOptional({
     description:
-      'Form-data field name that contains the binary image upload for this entry',
+      'Form-data field name that contains the binary image upload for this entry. Include a matching field in multipart/form-data and the backend will generate the object key automatically.',
     example: 'imageUpload-hero',
   })
   @IsOptional()
@@ -151,6 +164,14 @@ export class CreateWeightLossProductDto {
   @IsString()
   @MaxLength(160)
   token!: string;
+
+  @ApiProperty({
+    enum: ProductCategory,
+    example: ProductCategory.WEIGHT_LOSS,
+    description: 'Category this product belongs to',
+  })
+  @IsEnum(ProductCategory)
+  category!: ProductCategory;
 
   @ApiProperty({ example: 'GLP-1 Core — Injection' })
   @IsString()
@@ -207,7 +228,9 @@ export class CreateWeightLossProductDto {
   @IsString({ each: true })
   features?: string[];
 
-  @ApiPropertyOptional({ example: 'Ships in 1-2 days — Free delivery over $40' })
+  @ApiPropertyOptional({
+    example: 'Ships in 1-2 days — Free delivery over $40',
+  })
   @IsOptional()
   @IsString()
   shipping?: string;
@@ -250,7 +273,11 @@ export class CreateWeightLossProductDto {
   @Type(() => ProductHowItWorksStepDto)
   howItWorks?: ProductHowItWorksStepDto[];
 
-  @ApiPropertyOptional({ type: [ProductImageInputDto] })
+  @ApiPropertyOptional({
+    type: [ProductImageInputDto],
+    description:
+      'Image metadata. To upload binaries, send multipart/form-data and reference each file via images[].uploadField. Direct edits to objectKey are ignored.',
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
@@ -266,7 +293,11 @@ export class CreateWeightLossProductDto {
 export class UpdateWeightLossProductDto extends PartialType(
   CreateWeightLossProductDto,
 ) {
-  @ApiPropertyOptional({ type: [ProductImageUpdateDto] })
+  @ApiPropertyOptional({
+    type: [ProductImageUpdateDto],
+    description:
+      'Image metadata updates. Provide alt text, variants, or fallback URLs directly, and use uploadField to stream new binaries. objectKey/bucket values are ignored unless supplied by the backend after an upload.',
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

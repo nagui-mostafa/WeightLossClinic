@@ -6,9 +6,12 @@ import {
   ProductPlanOptionDto,
   ProductWhyChooseDto,
 } from './create-product.dto';
+import { ProductCategory } from '@prisma/client';
 
 export class ProductImageResponseDto extends ProductImageInputDto {
-  @ApiPropertyOptional({ example: 'https://cdn.joeymed.com/weight-loss/hero.png' })
+  @ApiPropertyOptional({
+    example: 'https://cdn.joeymed.com/weight-loss/hero.png',
+  })
   url?: string | null;
 }
 
@@ -18,6 +21,12 @@ export class ProductResponseDto {
 
   @ApiProperty()
   token!: string;
+
+  @ApiProperty({ enum: ProductCategory })
+  category!: ProductCategory;
+
+  @ApiProperty({ example: '/weight-loss' })
+  categorySlug!: string;
 
   @ApiProperty()
   name!: string;
@@ -81,4 +90,15 @@ export class ProductResponseDto {
 
   @ApiProperty()
   updatedAt!: string;
+}
+
+export class CategoryResponseDto {
+  @ApiProperty({ example: 'Weight Loss' })
+  label!: string;
+
+  @ApiProperty({ example: '/weight-loss' })
+  slug!: string;
+
+  @ApiProperty({ type: [ProductResponseDto] })
+  products!: ProductResponseDto[];
 }

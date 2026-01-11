@@ -51,6 +51,30 @@ enum ActivityKind {
   NOTE
 }
 
+enum ProductCategory {
+  WEIGHT_LOSS
+  SEXUAL_HEALTH
+  WELLNESS
+}
+
+enum RecordStatus {
+  ACTIVE
+  COMPLETED
+  CANCELED
+}
+
+enum GrouponVoucherStatus {
+  RESERVED
+  REDEEMED
+  RELEASED
+}
+
+enum NotificationStatus {
+  ACTIVE
+  PROCESSING
+  CLOSED
+}
+
 model User {
   id                     String                     @id @default(uuid()) @db.Uuid
   email                  String                     @unique
@@ -137,18 +161,62 @@ model Record {
   userId         String          @db.Uuid
   medication     String          @db.VarChar(200)
   medicationType MedicationType?
+  category       ProductCategory?
+  status         RecordStatus    @default(ACTIVE)
+  price          Decimal?        @db.Decimal(10, 2)
+  planDuration   Int?            @db.SmallInt
   startDate      DateTime        @db.Timestamptz(6)
   endDate        DateTime?       @db.Timestamptz(6)
   purchasedAt    DateTime        @db.Timestamptz(6)
   renewalDate    DateTime?       @db.Timestamptz(6)
+  trackingNumber String?         @db.VarChar(64)
   notes          String?
   createdAt      DateTime        @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime        @default(now()) @updatedAt @db.Timestamptz(6)
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   notifications  UserNotification[]
+  grouponVoucher GrouponVoucher?
 
   @@map("records")
   @@index([userId, startDate], map: "records_user_start_idx")
+}
+
+model GrouponVoucher {
+  id                  String                @id @default(uuid()) @db.Uuid
+  recordId            String?               @unique @db.Uuid
+  grouponCode         String?               @db.VarChar(100)
+  redemptionCode      String                @unique @db.VarChar(120)
+  status              GrouponVoucherStatus  @default(RESERVED)
+  optionId            String?               @db.VarChar(120)
+  optionTitle         String?               @db.VarChar(255)
+  dealId              String?               @db.VarChar(120)
+  dealTitle           String?               @db.VarChar(255)
+  priceAmount         Int?
+  priceCurrency       String?               @db.VarChar(10)
+  valueAmount         Int?
+  valueCurrency       String?               @db.VarChar(10)
+  reservationExpiresAt DateTime?            @db.Timestamptz(6)
+  redeemedAt          DateTime?             @db.Timestamptz(6)
+  rawPayload          Json?
+  createdAt           DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime              @default(now()) @updatedAt @db.Timestamptz(6)
+  record              Record?               @relation(fields: [recordId], references: [id], onDelete: SetNull)
+
+  @@map("groupon_vouchers")
+  @@index([status], map: "groupon_vouchers_status_idx")
+  @@index([reservationExpiresAt], map: "groupon_vouchers_res_exp_idx")
+}
+
+model GrouponCodeCatalog {
+  code         String   @id @db.VarChar(120)
+  planSlug     String   @db.VarChar(100)
+  productToken String?  @db.VarChar(100)
+  planWeeks    Int?
+  dealName     String?  @db.VarChar(255)
+  importedAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("groupon_code_catalog")
+  @@index([planSlug], map: "groupon_code_catalog_plan_slug_idx")
 }
 
 model UserShot {
@@ -252,6 +320,7 @@ model Blog {
 model WeightLossProduct {
   id           String   @id @default(uuid()) @db.Uuid
   token        String   @unique @db.VarChar(160)
+  category     ProductCategory @default(WEIGHT_LOSS)
   name         String   @db.VarChar(200)
   href         String   @db.VarChar(255)
   hrefForm     String?  @db.VarChar(255)
@@ -278,6 +347,7 @@ model WeightLossProduct {
   @@index([popular], map: "weight_loss_products_popular_idx")
   @@index([inStock], map: "weight_loss_products_in_stock_idx")
   @@index([createdAt], map: "weight_loss_products_created_idx")
+  @@index([category], map: "weight_loss_products_category_idx")
 }
 
 model UserNotification {
@@ -287,6 +357,7 @@ model UserNotification {
   title     String   @db.VarChar(200)
   message   String   @db.VarChar(500)
   dueDate   DateTime? @db.Timestamptz(6)
+  status    NotificationStatus @default(ACTIVE)
   read      Boolean  @default(false)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
